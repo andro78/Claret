@@ -1,0 +1,52 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="XCENA_Terminal_Dev.Dialogs.AppearanceDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Microsoft.UI.Xaml.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="Terminal colors"
+    PrimaryButtonText="Apply"
+    SecondaryButtonText="Defaults"
+    CloseButtonText="Cancel"
+    DefaultButton="Primary">
+
+    <StackPanel Spacing="12" Width="420">
+
+        <controls:RadioButtons x:Name="TargetButtons"
+                               Header="Editing"
+                               MaxColumns="2"
+                               SelectionChanged="OnTargetChanged">
+            <RadioButton Content="Background" />
+            <RadioButton Content="Text" />
+        </controls:RadioButtons>
+
+        <ColorPicker x:Name="Picker"
+                     IsAlphaEnabled="False"
+                     IsAlphaSliderVisible="False"
+                     IsAlphaTextInputVisible="False"
+                     IsHexInputVisible="True"
+                     ColorSpectrumShape="Box"
+                     ColorChanged="OnColorChanged" />
+
+        <TextBlock Text="Preview" Style="{StaticResource CaptionTextBlockStyle}" />
+        <Border x:Name="PreviewBorder"
+                CornerRadius="6"
+                BorderThickness="1"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                Padding="12">
+            <StackPanel>
+                <TextBlock x:Name="PreviewLine1"
+                           FontFamily="Cascadia Mono, Consolas, monospace"
+                           FontSize="13"
+                           Text="root@server:~# ls -al /var/log" />
+                <TextBlock x:Name="PreviewLine2"
+                           FontFamily="Cascadia Mono, Consolas, monospace"
+                           FontSize="13"
+                           Text="CJK sample: 가나다라마 · wide-cell check" />
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</ContentDialog>

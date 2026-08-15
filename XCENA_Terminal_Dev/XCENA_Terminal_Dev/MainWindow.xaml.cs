@@ -1,0 +1,644 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.UI.Windowing;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using Windows.Graphics;
+using Windows.System;
+using XCENA_Terminal_Dev.Controls;
+using XCENA_Terminal_Dev.Dialogs;
+using XCENA_Terminal_Dev.Models;
+using XCENA_Terminal_Dev.Services;
+
+namespace XCENA_Terminal_Dev
+{
+    /// <summary>
+    /// Shell of the app: a saved-profile sidebar and a <see cref="SessionSurface"/>. The surface
+    /// owns every terminal; each of its panes carries its own tab strip, so the window itself has
+    /// no tab bar.
+    /// </summary>
+    public sealed partial class MainWindow : Window
+    {
+        private readonly ProfileStore _profileStore = new();
+        private readonly RecentStore _recentStore = new();
+        private readonly AppearanceStore _appearanceStore = new();
+        private readonly LayoutStore _layoutStore = new();
+        private readonly SessionSurface _surface = new();
+        private readonly IntPtr _windowHandle;
+
+        private SidebarSplitter? _sidebarSplitter;
+        private Border? _dockHint;
+        private bool _draggingSidebar;
+
+        private bool _sidebarVisible = true;
+        private bool _dialogOpen;
+
+        public MainWindow()
+        {
+            _profileStore.Load();
+            _recentStore.Load();
+            _appearanceStore.Load();
+            _layoutStore.Load();
+
+            InitializeComponent();
+
+            _windowHandle = WinRT.Interop.WindowNative.GetWindowHandle(this);
+
+            ExtendsContentIntoTitleBar = true;
+            SetTitleBar(AppTitleBar);
+
+            AppWindow.Resize(new SizeInt32(1180, 760));
+            if (AppWindow.Title.Length == 0)
+            {
+                AppWindow.Title = "XCENA Terminal";
+            }
+
+            _surface.WindowHandle = _windowHandle;
+            _surface.ApplyAppearance(_appearanceStore.Current);
+            SurfaceHost.Children.Add(_surface);
+            _surface.WindowCommandRequested += OnSurfaceWindowCommand;
+            _surface.NewSessionRequested += (_, _) => ShowNewSessionMenu(_surface.ActiveAddAnchor);
+            _surface.DuplicateRequested += (_, view) => DuplicateSession(view);
+            _surface.ActiveSessionChanged += (_, _) => OnActiveSessionChanged();
+            _surface.Emptied += (_, _) =>
+            {
+                UpdateEmptyState();
+                UpdateLayoutChrome();
+            };
+
+            SetUpSidebar();
+            RegisterAccelerators();
+            UpdateProfileEmptyState();
+            UpdateEmptyState();
+            UpdateLayoutChrome();
+
+            _profileStore.Profiles.CollectionChanged += (_, _) => UpdateProfileEmptyState();
+            Closed += OnWindowClosed;
+
+            if (_profileStore.LoadError is not null)
+            {
+                AppTitleText.Text = $"XCENA Terminal — cannot read profiles: {_profileStore.LoadError}";
+            }
+        }
+
+        public ObservableCollection<ConnectionProfile> Profiles => _profileStore.Profiles;
+
+        private void RegisterAccelerators()
+        {
+            AddAccelerator(VirtualKey.T, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift,
+                () => ShowNewSessionMenu(_surface.ActiveAddAnchor));
+            AddAccelerator(VirtualKey.W, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, CloseActiveSession);
+            AddAccelerator(VirtualKey.B, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, ToggleSidebar);
+
+            // VK_OEM_PLUS / VK_OEM_MINUS; the terminal forwards the same chords when it holds focus.
+            AddAccelerator((VirtualKey)187, VirtualKeyModifiers.Menu | VirtualKeyModifiers.Shift,
+                () => SplitActive(Orientation.Horizontal));
+            AddAccelerator((VirtualKey)189, VirtualKeyModifiers.Menu | VirtualKeyModifiers.Shift,
+                () => SplitActive(Orientation.Vertical));
+
+            AddAccelerator(VirtualKey.Tab, VirtualKeyModifiers.Control, () => _surface.CycleActive(1));
+            AddAccelerator(VirtualKey.Tab, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift,
+                () => _surface.CycleActive(-1));
+        }
+
+        private void AddAccelerator(VirtualKey key, VirtualKeyModifiers modifiers, Action action)
+        {
+            var accelerator = new KeyboardAccelerator { Key = key, Modifiers = modifiers };
+            accelerator.Invoked += (_, args) =>
+            {
+                args.Handled = true;
+                action();
+            };
+            RootGrid.KeyboardAccelerators.Add(accelerator);
+        }
+
+        // ---------- profile sidebar ----------
+
+        private void OnToggleSidebarClick(object sender, RoutedEventArgs e) => ToggleSidebar();
+
+        private void ToggleSidebar()
+        {
+            _sidebarVisible = !_sidebarVisible;
+            ApplySidebarLayout();
+        }
+
+        /// <summary>Builds the resize divider and wires the header as a dock-drag handle.</summary>
+        private void SetUpSidebar()
+        {
+            _sidebarSplitter = new SidebarSplitter(
+                SidebarColumn,
+                () => _layoutStore.Current.SidebarOnRight,
+                width =>
+                {
+                    _layoutStore.Current.SidebarWidth = width;
+                    _layoutStore.Save();
+                });
+
+            Grid.SetColumn(_sidebarSplitter, 1);
+            BodyGrid.Children.Add(_sidebarSplitter);
+
+            SidebarHeader.PointerPressed += OnSidebarHeaderPressed;
+            SidebarHeader.PointerMoved += OnSidebarHeaderMoved;
+            SidebarHeader.PointerReleased += OnSidebarHeaderReleased;
+            SidebarHeader.PointerCaptureLost += (_, _) => EndSidebarDrag(dock: false);
+            ToolTipService.SetToolTip(SidebarHeader, "Drag to dock left or right");
+
+            ApplySidebarLayout();
+        }
+
+        /// <summary>The grid column the sidebar currently occupies.</summary>
+        private ColumnDefinition SidebarColumn =>
+            _layoutStore.Current.SidebarOnRight ? RightColumn : LeftColumn;
+
+        private ColumnDefinition SessionColumn =>
+            _layoutStore.Current.SidebarOnRight ? LeftColumn : RightColumn;
+
+        private void ApplySidebarLayout()
+        {
+            bool onRight = _layoutStore.Current.SidebarOnRight;
+            double width = _layoutStore.Current.SidebarWidth;
+
+            Grid.SetColumn(Sidebar, onRight ? 2 : 0);
+            Grid.SetColumn(SessionArea, onRight ? 0 : 2);
+            Sidebar.Margin = onRight ? new Thickness(4, 0, 8, 8) : new Thickness(8, 0, 4, 8);
+
+            Sidebar.Visibility = _sidebarVisible ? Visibility.Visible : Visibility.Collapsed;
+
+            if (_sidebarSplitter is not null)
+            {
+                _sidebarSplitter.Visibility = _sidebarVisible ? Visibility.Visible : Visibility.Collapsed;
+            }
+
+            SplitterColumn.Width = new GridLength(_sidebarVisible ? SidebarSplitter.Thickness : 0);
+            SidebarColumn.Width = new GridLength(_sidebarVisible ? width : 0);
+            SessionColumn.Width = new GridLength(1, GridUnitType.Star);
+        }
+
+        private void OnDockLeftClick(object sender, RoutedEventArgs e) => DockSidebar(onRight: false);
+
+        private void OnDockRightClick(object sender, RoutedEventArgs e) => DockSidebar(onRight: true);
+
+        private void DockSidebar(bool onRight)
+        {
+            if (_layoutStore.Current.SidebarOnRight == onRight && _sidebarVisible)
+            {
+                return;
+            }
+
+            _layoutStore.Current.SidebarOnRight = onRight;
+            _layoutStore.Save();
+            _sidebarVisible = true;
+            ApplySidebarLayout();
+        }
+
+        // ---------- dragging the sidebar to the other side ----------
+
+        private void OnSidebarHeaderPressed(object sender, PointerRoutedEventArgs e)
+        {
+            _draggingSidebar = SidebarHeader.CapturePointer(e.Pointer);
+            e.Handled = _draggingSidebar;
+        }
+
+        private void OnSidebarHeaderMoved(object sender, PointerRoutedEventArgs e)
+        {
+            if (!_draggingSidebar)
+            {
+                return;
+            }
+
+            ShowDockHint(e.GetCurrentPoint(RootGrid).Position.X > RootGrid.ActualWidth / 2);
+        }
+
+        private void OnSidebarHeaderReleased(object sender, PointerRoutedEventArgs e)
+        {
+            if (!_draggingSidebar)
+            {
+                return;
+            }
+
+            bool onRight = e.GetCurrentPoint(RootGrid).Position.X > RootGrid.ActualWidth / 2;
+            SidebarHeader.ReleasePointerCapture(e.Pointer);
+            EndSidebarDrag(dock: true, onRight);
+            e.Handled = true;
+        }
+
+        private void EndSidebarDrag(bool dock, bool onRight = false)
+        {
+            _draggingSidebar = false;
+            HideDockHint();
+
+            if (dock)
+            {
+                DockSidebar(onRight);
+            }
+        }
+
+        /// <summary>Half-window preview of where the panel would land.</summary>
+        private void ShowDockHint(bool onRight)
+        {
+            _dockHint ??= new Border
+            {
+                Background = AppAccent.DropFillBrush(),
+                BorderBrush = AppAccent.Brush(),
+                BorderThickness = new Thickness(2),
+                IsHitTestVisible = false,
+                Width = 220,
+            };
+
+            if (!RootGrid.Children.Contains(_dockHint))
+            {
+                Grid.SetRow(_dockHint, 1);
+                RootGrid.Children.Add(_dockHint);
+            }
+
+            _dockHint.HorizontalAlignment = onRight ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+            _dockHint.VerticalAlignment = VerticalAlignment.Stretch;
+            _dockHint.Visibility = Visibility.Visible;
+        }
+
+        private void HideDockHint()
+        {
+            if (_dockHint is not null)
+            {
+                _dockHint.Visibility = Visibility.Collapsed;
+                RootGrid.Children.Remove(_dockHint);
+            }
+        }
+
+        private void UpdateProfileEmptyState()
+        {
+            NoProfilesText.Visibility = _profileStore.Profiles.Count == 0
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
+
+        private void OnProfileDoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+        {
+            if (ProfileList.SelectedItem is ConnectionProfile profile)
+            {
+                _ = ConnectProfileAsync(profile);
+            }
+        }
+
+        private void OnConnectProfileClick(object sender, RoutedEventArgs e)
+        {
+            if (ResolveProfile(sender) is ConnectionProfile profile)
+            {
+                _ = ConnectProfileAsync(profile);
+            }
+        }
+
+        private void OnEditProfileClick(object sender, RoutedEventArgs e)
+        {
+            if (ResolveProfile(sender) is ConnectionProfile profile)
+            {
+                _ = EditProfileAsync(profile);
+            }
+        }
+
+        private void OnForgetHostKeyClick(object sender, RoutedEventArgs e)
+        {
+            if (ResolveProfile(sender) is ConnectionProfile profile)
+            {
+                KnownHostsStore.Instance.Forget(profile.Host, profile.Port);
+            }
+        }
+
+        private async void OnDeleteProfileClick(object sender, RoutedEventArgs e)
+        {
+            if (ResolveProfile(sender) is not ConnectionProfile profile)
+            {
+                return;
+            }
+
+            var confirm = new ContentDialog
+            {
+                XamlRoot = RootGrid.XamlRoot,
+                Title = "Delete profile",
+                Content = $"Delete the profile '{profile.DisplayName}'?",
+                PrimaryButtonText = "Delete",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Close,
+            };
+
+            if (await ShowDialogAsync(confirm) == ContentDialogResult.Primary)
+            {
+                _profileStore.Remove(profile);
+            }
+        }
+
+        /// <summary>Menu flyout items carry the right-clicked item in DataContext; fall back to the selection.</summary>
+        private ConnectionProfile? ResolveProfile(object sender)
+        {
+            if (sender is FrameworkElement { DataContext: ConnectionProfile fromContext })
+            {
+                return fromContext;
+            }
+
+            return ProfileList.SelectedItem as ConnectionProfile;
+        }
+
+        // ---------- connecting ----------
+
+        private void OnNewConnectionClick(object sender, RoutedEventArgs e) =>
+            ShowNewSessionMenu(sender as FrameworkElement);
+
+        private void NewConnection() => _ = NewConnectionAsync();
+
+        /// <summary>
+        /// The "+" button offers the saved profiles first — that is what a new session usually is —
+        /// with the full connection dialog as the last entry.
+        /// </summary>
+        private void ShowNewSessionMenu(FrameworkElement? anchor)
+        {
+            if (anchor is null)
+            {
+                NewConnection();
+                return;
+            }
+
+            var menu = new MenuFlyout { XamlRoot = RootGrid.XamlRoot };
+
+            // Recent first: reconnecting to what you just used is the common case.
+            IReadOnlyList<RecentConnection> recent = _recentStore.Items;
+            if (recent.Count > 0)
+            {
+                menu.Items.Add(SectionLabel("Recent"));
+
+                foreach (RecentConnection entry in recent.Take(8))
+                {
+                    RecentConnection captured = entry;
+                    var item = new MenuFlyoutItem
+                    {
+                        Text = captured.DisplayName,
+                        // Shown right-aligned in grey, which is exactly where the endpoint belongs.
+                        KeyboardAcceleratorTextOverride = captured.Endpoint,
+                    };
+                    item.Click += (_, _) => _ = ConnectRecentAsync(captured);
+                    menu.Items.Add(item);
+                }
+
+                var clear = new MenuFlyoutItem { Text = "Clear history" };
+                clear.Click += (_, _) => _recentStore.Clear();
+                menu.Items.Add(clear);
+                menu.Items.Add(new MenuFlyoutSeparator());
+            }
+
+            if (_profileStore.Profiles.Count > 0)
+            {
+                menu.Items.Add(SectionLabel("Saved connections"));
+
+                foreach (ConnectionProfile profile in _profileStore.Profiles)
+                {
+                    ConnectionProfile captured = profile;
+                    var item = new MenuFlyoutItem
+                    {
+                        Text = captured.DisplayName,
+                        KeyboardAcceleratorTextOverride = captured.Endpoint,
+                    };
+                    item.Click += (_, _) => _ = ConnectProfileAsync(captured);
+                    menu.Items.Add(item);
+                }
+
+                menu.Items.Add(new MenuFlyoutSeparator());
+            }
+
+            var custom = new MenuFlyoutItem { Text = "New connection…" };
+            custom.Click += (_, _) => NewConnection();
+            menu.Items.Add(custom);
+
+            menu.ShowAt(anchor);
+        }
+
+        /// <summary>MenuFlyout has no header item, so a disabled entry stands in for one.</summary>
+        private static MenuFlyoutItem SectionLabel(string text) => new()
+        {
+            Text = text,
+            IsEnabled = false,
+        };
+
+        private async Task ConnectRecentAsync(RecentConnection entry)
+        {
+            // Prefer the saved profile so any DPAPI-stored secret still applies.
+            ConnectionProfile? profile =
+                _profileStore.Profiles.FirstOrDefault(p => p.Id == entry.ProfileId)
+                ?? _profileStore.Profiles.FirstOrDefault(p =>
+                    string.Equals(p.Host, entry.Host, StringComparison.OrdinalIgnoreCase)
+                    && p.Port == entry.Port
+                    && string.Equals(p.Username, entry.Username, StringComparison.Ordinal));
+
+            await ConnectProfileAsync(profile ?? entry.ToProfile());
+        }
+
+        private async void OnAppearanceClick(object sender, RoutedEventArgs e)
+        {
+            var dialog = new AppearanceDialog(_appearanceStore.Current);
+            if (await ShowDialogAsync(dialog) != ContentDialogResult.Primary)
+            {
+                return;
+            }
+
+            _appearanceStore.Save(dialog.Result);
+            _surface.ApplyAppearance(_appearanceStore.Current);
+        }
+
+        private void DuplicateSession(TerminalView view)
+        {
+            if (view.Connection is { } connection)
+            {
+                _ = OpenSessionAsync(connection.Profile, connection.Secret);
+            }
+        }
+
+        private async Task NewConnectionAsync()
+        {
+            var dialog = new ConnectionDialog(_windowHandle);
+            if (await ShowDialogAsync(dialog) != ContentDialogResult.Primary)
+            {
+                return;
+            }
+
+            if (dialog.ShouldSaveProfile)
+            {
+                _profileStore.AddOrUpdate(dialog.Profile);
+            }
+
+            await OpenSessionAsync(dialog.Profile, dialog.Secret);
+        }
+
+        private async Task ConnectProfileAsync(ConnectionProfile profile)
+        {
+            string? secret = profile.RememberSecret
+                ? SecretProtector.Unprotect(profile.ProtectedSecret)
+                : null;
+
+            // Without a stored secret, reopen the dialog pre-filled so the user only types the password.
+            if (secret is null && profile.AuthMode == SshAuthMode.Password)
+            {
+                var dialog = new ConnectionDialog(_windowHandle, profile);
+                if (await ShowDialogAsync(dialog) != ContentDialogResult.Primary)
+                {
+                    return;
+                }
+
+                if (dialog.ShouldSaveProfile)
+                {
+                    _profileStore.AddOrUpdate(dialog.Profile);
+                }
+
+                await OpenSessionAsync(dialog.Profile, dialog.Secret);
+                return;
+            }
+
+            await OpenSessionAsync(profile, secret);
+        }
+
+        private async Task EditProfileAsync(ConnectionProfile profile)
+        {
+            var dialog = new ConnectionDialog(_windowHandle, profile, editOnly: true);
+            if (await ShowDialogAsync(dialog) == ContentDialogResult.Primary)
+            {
+                _profileStore.AddOrUpdate(dialog.Profile);
+            }
+        }
+
+        /// <summary>WinUI allows only one ContentDialog at a time; swallow overlapping requests.</summary>
+        private async Task<ContentDialogResult> ShowDialogAsync(ContentDialog dialog)
+        {
+            if (_dialogOpen)
+            {
+                return ContentDialogResult.None;
+            }
+
+            _dialogOpen = true;
+            try
+            {
+                dialog.XamlRoot = RootGrid.XamlRoot;
+                return await dialog.ShowAsync();
+            }
+            finally
+            {
+                _dialogOpen = false;
+            }
+        }
+
+        private async Task OpenSessionAsync(ConnectionProfile profile, string? secret)
+        {
+            ConnectionProfile snapshot = profile.Clone();
+            TerminalView view = _surface.AddSession(snapshot);
+
+            UpdateEmptyState();
+            UpdateLayoutChrome();
+            OnActiveSessionChanged();
+
+            await _surface.StartAsync(view, snapshot, secret);
+
+            // Only successful connections earn a history entry; failed attempts would be noise.
+            if (view.State == TerminalState.Connected)
+            {
+                _recentStore.Record(snapshot);
+            }
+        }
+
+        private void CloseActiveSession()
+        {
+            if (_surface.ActiveView is { } view)
+            {
+                _surface.CloseSession(view);
+            }
+        }
+
+        // ---------- layout ----------
+
+        private void SplitActive(Orientation orientation)
+        {
+            _surface.SplitActive(orientation);
+            UpdateLayoutChrome();
+        }
+
+        private void OnLayoutSingleClick(object sender, RoutedEventArgs e)
+        {
+            _surface.MergeAll();
+            UpdateLayoutChrome();
+        }
+
+        private void OnLayoutSideClick(object sender, RoutedEventArgs e)
+        {
+            _surface.SpreadAll(Orientation.Horizontal);
+            UpdateLayoutChrome();
+        }
+
+        private void OnLayoutStackClick(object sender, RoutedEventArgs e)
+        {
+            _surface.SpreadAll(Orientation.Vertical);
+            UpdateLayoutChrome();
+        }
+
+        private void OnSurfaceWindowCommand(object? sender, TerminalCommand command)
+        {
+            if (command == TerminalCommand.ToggleSidebar)
+            {
+                ToggleSidebar();
+            }
+        }
+
+        private void OnActiveSessionChanged()
+        {
+            UpdateWindowTitle();
+            UpdateLayoutChrome();
+        }
+
+        private void UpdateWindowTitle()
+        {
+            TerminalView? view = _surface.ActiveView;
+            if (view is null)
+            {
+                AppTitleText.Text = "XCENA Terminal";
+                return;
+            }
+
+            string label = view.RemoteTitle ?? view.Profile?.Endpoint ?? string.Empty;
+            AppTitleText.Text = label.Length == 0
+                ? "XCENA Terminal"
+                : $"XCENA Terminal — {label}";
+        }
+
+        /// <summary>Keeps the title-bar button and its radio items in step with the surface.</summary>
+        private void UpdateLayoutChrome()
+        {
+            int panes = _surface.PaneCount;
+            bool split = panes > 1;
+
+            // Panes nest, so there is no single orientation to report — the count is what matters.
+            LayoutLabel.Text = split ? $"Split ({panes})" : "Single pane";
+
+            LayoutSingleItem.IsChecked = !split;
+            LayoutSideItem.IsChecked = false;
+            LayoutStackItem.IsChecked = false;
+
+            bool canSpread = _surface.SessionCount > 1;
+            LayoutSideItem.IsEnabled = canSpread;
+            LayoutStackItem.IsEnabled = canSpread;
+            LayoutSingleItem.IsEnabled = split;
+            LayoutButton.IsEnabled = _surface.SessionCount > 0;
+        }
+
+        private void UpdateEmptyState()
+        {
+            bool hasSessions = _surface.SessionCount > 0;
+            EmptyState.Visibility = hasSessions ? Visibility.Collapsed : Visibility.Visible;
+            _surface.Visibility = hasSessions ? Visibility.Visible : Visibility.Collapsed;
+
+            if (!hasSessions)
+            {
+                UpdateWindowTitle();
+            }
+        }
+
+        private void OnWindowClosed(object sender, WindowEventArgs args) => _surface.ShutdownAll();
+    }
+}

@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>XCENA Terminal</title>
+    <link rel="stylesheet" href="./xterm.css" />
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #0c0c0c;
+        }
+
+        #term {
+            position: absolute;
+            inset: 0;
+            padding: 6px 4px 6px 8px;
+            box-sizing: border-box;
+        }
+
+        /* WebView2 renders its own scrollbar chrome; keep xterm's slim and dark. */
+        .xterm-viewport::-webkit-scrollbar { width: 10px; }
+        .xterm-viewport::-webkit-scrollbar-track { background: transparent; }
+        .xterm-viewport::-webkit-scrollbar-thumb {
+            background: #4a4a4a;
+            border-radius: 5px;
+        }
+        .xterm-viewport::-webkit-scrollbar-thumb:hover { background: #5f5f5f; }
+    </style>
+</head>
+<body>
+    <div id="term"></div>
+
+    <script src="./xterm.js"></script>
+    <script src="./addon-fit.js"></script>
+    <script src="./addon-webgl.js"></script>
+    <script>
+        (function () {
+            'use strict';
+
+            var host = window.chrome && window.chrome.webview;
+            var encoder = new TextEncoder();
+
+            function bytesFromBase64(b64) {
+                var bin = atob(b64);
+                var out = new Uint8Array(bin.length);
+                for (var i = 0; i < bin.length; i++) {
+                    out[i] = bin.charCodeAt(i);
+                }
+                return out;
+            }
+
+            function base64FromString(text) {
+                var bytes = encoder.encode(text);
+                var bin = '';
+                // Chunked to stay clear of the argument-count limit on large selections.
+                for (var i = 0; i < bytes.length; i += 0x8000) {
+                    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+                }
+                return btoa(bin);
+            }
+
+            function post(message) {
+                if (host) {
+                    host.postMessage(message);
+                }
+            }
+
+            // Kept so a theme patch from the host can be merged instead of replacing the palette.
+            var baseTheme = null;
+
+            function applyTheme(patch) {
+                var merged = {};
+                var key;
+                for (key in baseTheme) {
+                    if (Object.prototype.hasOwnProperty.call(baseTheme, key)) {
+                        merged[key] = baseTheme[key];
+                    }
+                }
+                for (key in patch) {
+                    if (Object.prototype.hasOwnProperty.call(patch, key) && patch[key]) {
+                        merged[key] = patch[key];
+                    }
+                }
+                term.options.theme = merged;
+            }
+
+            var term = new Terminal({
+                allowProposedApi: false,
+                cursorBlink: true,
+                cursorStyle: 'bar',
+                // D2Coding first for anyone who has it (Hangul is exactly 2x the Latin advance);
+                // GulimChe is the always-present Windows fallback with the same 2:1 metrics.
+                fontFamily: "'D2Coding', 'Cascadia Mono', 'Consolas', 'GulimChe', 'Malgun Gothic', monospace",
+                fontSize: 14,
+                lineHeight: 1.2,
+                scrollback: 10000,
+                drawBoldTextInBrightColors: true,
+                rightClickSelectsWord: false,
+                theme: {
+                    background: '#0c0c0c',
+                    foreground: '#e6e6e6',
+                    cursor: '#f5c542',
+                    cursorAccent: '#0c0c0c',
+                    selectionBackground: '#3a5f8a',
+                    black: '#0c0c0c',
+                    red: '#c50f1f',
+                    green: '#13a10e',
+                    yellow: '#c19c00',
+                    blue: '#0037da',
+                    magenta: '#881798',
+                    cyan: '#3a96dd',
+                    white: '#cccccc',
+                    brightBlack: '#767676',
+                    brightRed: '#e74856',
+                    brightGreen: '#16c60c',
+                    brightYellow: '#f9f1a5',
+                    brightBlue: '#3b78ff',
+                    brightMagenta: '#b4009e',
+                    brightCyan: '#61d6d6',
+                    brightWhite: '#f2f2f2'
+                }
+            });
+
+            baseTheme = term.options.theme;
+
+            var fitAddon = new FitAddon.FitAddon();
+            term.loadAddon(fitAddon);
+            term.open(document.getElementById('term'));
+
+            // The WebGL renderer draws box-drawing/block characters itself instead of relying on
+            // the font, so TUI frames have no seams, and it clips every glyph to its cell so a
+            // fallback Hangul font cannot break column alignment. Falls back to DOM if unavailable.
+            (function attachWebgl() {
+                if (typeof WebglAddon === 'undefined') {
+                    post('ewebgl addon missing');
+                    return;
+                }
+
+                try {
+                    var webgl = new WebglAddon.WebglAddon();
+                    webgl.onContextLoss(function () {
+                        webgl.dispose(); // xterm reverts to the DOM renderer on dispose
+                    });
+                    term.loadAddon(webgl);
+                } catch (e) {
+                    post('ewebgl unavailable: ' + e);
+                }
+            })();
+
+            function safeFit() {
+                // While the tab is unselected the host has no layout. Fitting then would collapse
+                // the grid to 2x1 and push that bogus size to the remote PTY, wrecking the shell.
+                var host = document.getElementById('term');
+                if (!host || host.clientWidth < 4 || host.clientHeight < 4) {
+                    return;
+                }
+
+                try {
+                    fitAddon.fit();
+                } catch (e) {
+                    /* element not laid out yet */
+                }
+            }
+
+            function setFontSize(size) {
+                var next = Math.min(28, Math.max(8, size));
+                if (next !== term.options.fontSize) {
+                    term.options.fontSize = next;
+                    safeFit();
+                }
+            }
+
+            function changeFontSize(delta) {
+                setFontSize(term.options.fontSize + delta);
+            }
+
+            // Terminal -> host
+            term.onData(function (data) {
+                post('i' + base64FromString(data));
+            });
+
+            term.onBinary(function (data) {
+                // Already a byte string (one char per byte) from mouse/bracketed-paste reports.
+                post('i' + btoa(data));
+            });
+
+            term.onResize(function (size) {
+                post('r' + size.cols + ',' + size.rows);
+            });
+
+            term.onTitleChange(function (title) {
+                post('t' + base64FromString(title));
+            });
+
+            // Clipboard is handled on the host side: the WebView sandbox would otherwise
+            // prompt for permission and cannot reach the Windows clipboard directly.
+            term.attachCustomKeyEventHandler(function (ev) {
+                if (ev.type !== 'keydown') {
+                    return true;
+                }
+                if (ev.ctrlKey && ev.shiftKey && (ev.key === 'C' || ev.key === 'c')) {
+                    var selection = term.getSelection();
+                    if (selection) {
+                        post('c' + base64FromString(selection));
+                    }
+                    return false;
+                }
+                if (ev.ctrlKey && ev.shiftKey && (ev.key === 'V' || ev.key === 'v')) {
+                    post('v');
+                    return false;
+                }
+                // Cycle sessions. Ctrl+Tab is not a terminal sequence (Tab is Ctrl+I), so it is
+                // safe to swallow here.
+                if (ev.ctrlKey && !ev.altKey && ev.key === 'Tab') {
+                    post(ev.shiftKey ? 'kprevtab' : 'knexttab');
+                    return false;
+                }
+
+                // Window-level commands: the WebView owns keyboard focus, so XAML accelerators
+                // never see these. Forward them to the host instead.
+                if (ev.ctrlKey && ev.shiftKey) {
+                    var upper = ev.key.toUpperCase();
+                    if (upper === 'T') { post('knewtab'); return false; }
+                    if (upper === 'W') { post('kclosesession'); return false; }
+                    if (upper === 'B') { post('ksidebar'); return false; }
+                }
+
+                // Tile every open session, or fold back to single view.
+                if (ev.altKey && ev.shiftKey && !ev.ctrlKey) {
+                    if (ev.key === '+' || ev.key === '=') { post('ktileside'); return false; }
+                    if (ev.key === '-' || ev.key === '_') { post('ktilestack'); return false; }
+                }
+
+                // Font size, matching Windows Terminal's bindings.
+                if (ev.ctrlKey && !ev.shiftKey && !ev.altKey) {
+                    if (ev.key === '=' || ev.key === '+') { changeFontSize(1); return false; }
+                    if (ev.key === '-' || ev.key === '_') { changeFontSize(-1); return false; }
+                    if (ev.key === '0') { setFontSize(14); return false; }
+                }
+
+                return true;
+            });
+
+            // The host cannot see clicks landing inside the WebView, so tell it which pane was hit.
+            term.element.addEventListener('mousedown', function () {
+                post('kfocus');
+            }, true);
+
+            // Right-click: copy when there is a selection, paste otherwise (PuTTY-style).
+            term.element.addEventListener('contextmenu', function (ev) {
+                ev.preventDefault();
+                if (term.hasSelection()) {
+                    post('c' + base64FromString(term.getSelection()));
+                    term.clearSelection();
+                } else {
+                    post('v');
+                }
+            });
+
+            // Host -> terminal
+            if (host) {
+                host.addEventListener('message', function (ev) {
+                    var raw = ev.data;
+                    if (typeof raw !== 'string' || raw.length === 0) {
+                        return;
+                    }
+                    var tag = raw[0];
+                    var body = raw.substring(1);
+
+                    switch (tag) {
+                        case 'o': // shell output, base64-encoded UTF-8 bytes
+                            term.write(bytesFromBase64(body));
+                            break;
+                        case 'm': // host-generated notice, already a plain string
+                            term.write(body.replace(/\n/g, '\r\n'));
+                            break;
+                        case 'p': // paste payload coming back from the host clipboard
+                            term.paste(body);
+                            break;
+                        case 'f':
+                            term.focus();
+                            break;
+                        case 'z':
+                            safeFit();
+                            break;
+                        case 'x':
+                            term.clear();
+                            break;
+                        case 'h': // theme patch, e.g. {"background":"#101820","foreground":"#d8e0e8"}
+                            try {
+                                var patch = JSON.parse(body);
+                                applyTheme(patch);
+                                if (patch.background) {
+                                    document.documentElement.style.background = patch.background;
+                                    document.body.style.background = patch.background;
+                                }
+                            } catch (e) {
+                                post('etheme parse failed: ' + e);
+                            }
+                            break;
+                        case 's': // font size, e.g. "s14"
+                            var size = parseInt(body, 10);
+                            if (!isNaN(size) && size >= 6 && size <= 40) {
+                                term.options.fontSize = size;
+                                safeFit();
+                            }
+                            break;
+                    }
+                });
+            }
+
+            var resizeObserver = new ResizeObserver(function () {
+                safeFit();
+            });
+            resizeObserver.observe(document.body);
+
+            window.addEventListener('focus', function () {
+                term.focus();
+            });
+
+            safeFit();
+            term.focus();
+            post('r' + term.cols + ',' + term.rows);
+            post('ready');
+        })();
+    </script>
+</body>
+</html>

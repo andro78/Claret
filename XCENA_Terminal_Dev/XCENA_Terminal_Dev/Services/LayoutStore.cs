@@ -4,12 +4,21 @@ using System.Text.Json;
 
 namespace XCENA_Terminal_Dev.Services
 {
-    /// <summary>Where the sidebar sits and how wide it is, remembered between runs.</summary>
+    /// <summary>Workspace preferences remembered between runs.</summary>
     public sealed class WorkspaceLayout
     {
         public double SidebarWidth { get; set; } = 256;
 
         public bool SidebarOnRight { get; set; }
+
+        /// <summary>Whether the Files tree lists files as well as folders (Options &gt; SFTP).</summary>
+        public bool ShowRemoteFiles { get; set; }
+
+        /// <summary>
+        /// Where downloads are saved without asking. Empty means "show the save dialog every time",
+        /// which is the default because writing to a remembered folder should be a deliberate choice.
+        /// </summary>
+        public string DownloadFolder { get; set; } = string.Empty;
     }
 
     internal sealed class LayoutStore

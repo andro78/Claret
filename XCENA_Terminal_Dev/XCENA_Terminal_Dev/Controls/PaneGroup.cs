@@ -32,8 +32,10 @@ namespace XCENA_Terminal_Dev.Controls
     /// </summary>
     internal sealed class PaneGroup : Grid
     {
-        private static readonly Windows.UI.Color Edge = Windows.UI.Color.FromArgb(0xFF, 0x4C, 0x50, 0x58);
         private static readonly Windows.UI.Color Fill = Windows.UI.Color.FromArgb(0xFF, 0x0C, 0x0C, 0x0C);
+
+        /// <summary>Panes read as cards: rounded, no visible edge, separated by the gap around them.</summary>
+        private const double CardCorner = 8;
 
         /// <summary>Payload text; the drag is in-process, so the real handoff is <see cref="_drag"/>.</summary>
         private const string DragPayload = "xcena-terminal-tab";
@@ -62,9 +64,11 @@ namespace XCENA_Terminal_Dev.Controls
             {
                 Child = Tabs,
                 Background = new SolidColorBrush(Fill),
-                // Always 1px so toggling the active outline cannot reflow (and resize) terminals.
+                CornerRadius = new CornerRadius(CardCorner),
+                // Always 1px so toggling the active ring cannot reflow (and resize) terminals;
+                // when inactive the stroke is simply transparent, leaving no visible border.
                 BorderThickness = new Thickness(1),
-                BorderBrush = new SolidColorBrush(Edge),
+                BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
             };
 
             // The terminals are dark; let the tab strip match instead of the app's light theme.
@@ -288,11 +292,15 @@ namespace XCENA_Terminal_Dev.Controls
         public void ApplyBackground(Windows.UI.Color color) =>
             _frame.Background = new SolidColorBrush(color);
 
+        /// <summary>
+        /// Only the active card is ringed, and only while several are on screen. Inactive cards get
+        /// no stroke at all — the gap between them is what separates them.
+        /// </summary>
         public void SetActiveOutline(bool active, bool visible)
         {
             _frame.BorderBrush = visible && active
                 ? AppAccent.Brush()
-                : new SolidColorBrush(Edge);
+                : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         }
     }
 }

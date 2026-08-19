@@ -237,6 +237,18 @@ namespace XCENA_Terminal_Dev.Controls
 
         public void ClearScreen() => Post("x");
 
+        /// <summary>Types text into the shell, as if the user had entered it at the prompt.</summary>
+        public void SendInput(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            _session?.SendText(text);
+            FocusTerminal();
+        }
+
         /// <summary>
         /// Applies user colours to this terminal. Remembered so a page that has not finished
         /// loading yet still gets them once it reports ready.

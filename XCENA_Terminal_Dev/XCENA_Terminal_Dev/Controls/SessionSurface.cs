@@ -35,7 +35,11 @@ namespace XCENA_Terminal_Dev.Controls
 
         public SessionSurface()
         {
-            Background = new SolidColorBrush(TerminalBackground);
+            // Transparent, so the window background shows through the gaps between panes. That gap
+            // is what separates the cards — no drawn borders needed. The padding keeps the outer
+            // cards from butting against the window edges.
+            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            Padding = new Thickness(4, 0, 8, 8);
         }
 
         /// <summary>Window-level chords (sidebar) that bubble out of a pane.</summary>
@@ -52,6 +56,12 @@ namespace XCENA_Terminal_Dev.Controls
 
         /// <summary>Fired after the last session closes.</summary>
         public event EventHandler? Emptied;
+
+        /// <summary>
+        /// A session is about to be torn down. Anything holding a side channel for it — the SFTP
+        /// file tree, for one — should let go now, while the connection details are still valid.
+        /// </summary>
+        public event EventHandler<TerminalView>? SessionClosing;
 
         /// <summary>Owning window handle, needed to map the cursor into client coordinates.</summary>
         public IntPtr WindowHandle { get; set; }
@@ -116,6 +126,8 @@ namespace XCENA_Terminal_Dev.Controls
                 return;
             }
 
+            SessionClosing?.Invoke(this, view);
+
             view.CommandRequested -= OnPaneCommand;
             view.StateChanged -= OnSessionStateChanged;
             view.TitleChanged -= OnSessionTitleChanged;
@@ -166,7 +178,6 @@ namespace XCENA_Terminal_Dev.Controls
         public void ApplyAppearance(TerminalAppearance appearance)
         {
             _appearance = appearance.Clone();
-            Background = new SolidColorBrush(_appearance.BackgroundColor);
 
             foreach (PaneLeafNode leaf in Leaves())
             {

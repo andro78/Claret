@@ -30,6 +30,22 @@
     </Content>
   </ItemGroup>
 
+  <!--
+    An unpackaged publish drops the compiled XAML (*.xbf) and the app resource index (*.pri)
+    even though the build produces them, and without those Application.Start fails at startup
+    with E_FAIL inside Microsoft.UI.Xaml.dll. Add them back to the publish item list.
+  -->
+  <Target Name="IncludeXamlArtifactsInPublish" BeforeTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <_XamlPublishArtifact Include="$(OutDir)*.xbf" />
+      <_XamlPublishArtifact Include="$(OutDir)$(AssemblyName).pri" />
+      <ResolvedFileToPublish Include="@(_XamlPublishArtifact)">
+        <RelativePath>%(Filename)%(Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+
     <!-- Publish Properties -->
   <PropertyGroup>
     <PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>

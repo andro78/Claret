@@ -7,7 +7,10 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Windows.Graphics;
+using Windows.Storage;
+using Windows.Storage.Pickers;
 using Windows.System;
 using XCENA_Terminal_Dev.Controls;
 using XCENA_Terminal_Dev.Dialogs;
@@ -60,6 +63,12 @@ namespace XCENA_Terminal_Dev
             _surface.WindowHandle = _windowHandle;
             _surface.ApplyAppearance(_appearanceStore.Current);
             SurfaceHost.Children.Add(_surface);
+            Files.WindowHandle = _windowHandle;
+            Files.DownloadFolder = _layoutStore.Current.DownloadFolder;
+            // Nothing is connected yet, so this only records the preference; the first listing reads it.
+            _ = Files.SetShowFilesAsync(_layoutStore.Current.ShowRemoteFiles);
+            _surface.SessionClosing += (_, view) => Files.Forget(view);
+            Files.CommandRequested += (_, command) => _surface.ActiveView?.SendInput(command + "\n");
             _surface.WindowCommandRequested += OnSurfaceWindowCommand;
             _surface.NewSessionRequested += (_, _) => ShowNewSessionMenu(_surface.ActiveAddAnchor);
             _surface.DuplicateRequested += (_, view) => DuplicateSession(view);
@@ -71,6 +80,7 @@ namespace XCENA_Terminal_Dev
             };
 
             SetUpSidebar();
+            SelectSidebarTab(files: false);
             RegisterAccelerators();
             UpdateProfileEmptyState();
             UpdateEmptyState();
@@ -590,6 +600,46 @@ namespace XCENA_Terminal_Dev
         {
             UpdateWindowTitle();
             UpdateLayoutChrome();
+            SyncFilesTab();
+        }
+
+        // ---------- sidebar tabs ----------
+
+        private void OnSessionsTabClick(object sender, RoutedEventArgs e) => SelectSidebarTab(files: false);
+
+        private void OnFilesTabClick(object sender, RoutedEventArgs e) => SelectSidebarTab(files: true);
+
+        private void SelectSidebarTab(bool files)
+        {
+            // "New connection" now lives inside the profile card, so hiding the card hides it too.
+            ProfileCard.Visibility = files ? Visibility.Collapsed : Visibility.Visible;
+            FilesCard.Visibility = files ? Visibility.Visible : Visibility.Collapsed;
+
+            var accent = AppAccent.Brush();
+            var clear = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            var dim = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
+            var bright = (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
+
+            SessionsTabMarker.Background = files ? clear : accent;
+            FilesTabMarker.Background = files ? accent : clear;
+            SessionsTabIcon.Foreground = files ? dim : bright;
+            FilesTabIcon.Foreground = files ? bright : dim;
+
+            if (files)
+            {
+                SyncFilesTab();
+            }
+        }
+
+        /// <summary>Points the file tree at whichever session is active, when that tab is showing.</summary>
+        private void SyncFilesTab()
+        {
+            if (FilesCard.Visibility != Visibility.Visible)
+            {
+                return;
+            }
+
+            _ = Files.ShowAsync(_surface.ActiveView);
         }
 
         private void UpdateWindowTitle()
@@ -605,6 +655,107 @@ namespace XCENA_Terminal_Dev
             AppTitleText.Text = label.Length == 0
                 ? "XCENA Terminal"
                 : $"XCENA Terminal — {label}";
+        }
+
+        /// <summary>
+        /// The SFTP commands only make sense against a connected tree, and only one transfer runs at
+        /// a time, so the state is resolved when the menu opens rather than tracked continuously.
+        /// </summary>
+        private void OnOptionsOpening(object sender, object e)
+        {
+            SftpShowFilesItem.IsChecked = Files.ShowFiles;
+
+            bool live = Files.IsLive;
+            bool idle = live && !Files.IsTransferring;
+
+            SftpUploadItem.IsEnabled = idle;
+            SftpDownloadItem.IsEnabled = idle && Files.CanDownload;
+            SftpRefreshItem.IsEnabled = live;
+
+            SftpDownloadItem.Text = Files.ShowFiles
+                ? "Download selected file…"
+                : "Download selected file… (turn on Show files)";
+
+            string folder = _layoutStore.Current.DownloadFolder;
+            SftpDownloadFolderItem.Text = folder.Length > 0
+                ? $"Download folder: {folder}"
+                : "Download folder: ask each time";
+            SftpAskEachTimeItem.IsEnabled = folder.Length > 0;
+        }
+
+        /// <summary>
+        /// Picks the folder downloads go to. Setting one skips the save dialog from then on, which is
+        /// the point: repeated downloads from the same server should not need a dialog each time.
+        /// </summary>
+        private async void OnSftpDownloadFolderClick(object sender, RoutedEventArgs e)
+        {
+            string? path;
+            try
+            {
+                var picker = new FolderPicker { SuggestedStartLocation = PickerLocationId.Downloads };
+
+                // A folder picker with no filter returns nothing on some Windows builds.
+                picker.FileTypeFilter.Add("*");
+                WinRT.Interop.InitializeWithWindow.Initialize(picker, _windowHandle);
+
+                StorageFolder? folder = await picker.PickSingleFolderAsync();
+                path = folder?.Path;
+            }
+            catch (Exception ex)
+            {
+                await ShowDialogAsync(new ContentDialog
+                {
+                    Title = "Download folder",
+                    Content = $"Cannot open the folder picker: {ex.Message}",
+                    CloseButtonText = "Close",
+                });
+
+                return;
+            }
+
+            if (string.IsNullOrEmpty(path))
+            {
+                return;
+            }
+
+            _layoutStore.Current.DownloadFolder = path;
+            _layoutStore.Save();
+            Files.DownloadFolder = path;
+        }
+
+        private void OnSftpAskEachTimeClick(object sender, RoutedEventArgs e)
+        {
+            _layoutStore.Current.DownloadFolder = string.Empty;
+            _layoutStore.Save();
+            Files.DownloadFolder = string.Empty;
+        }
+
+        private async void OnSftpShowFilesClick(object sender, RoutedEventArgs e)
+        {
+            bool showFiles = SftpShowFilesItem.IsChecked;
+            _layoutStore.Current.ShowRemoteFiles = showFiles;
+            _layoutStore.Save();
+
+            SelectSidebarTab(files: true);
+            await Files.SetShowFilesAsync(showFiles);
+        }
+
+        private async void OnSftpUploadClick(object sender, RoutedEventArgs e)
+        {
+            SelectSidebarTab(files: true);
+            await Files.PickAndUploadAsync();
+        }
+
+        private async void OnSftpDownloadClick(object sender, RoutedEventArgs e)
+        {
+            SelectSidebarTab(files: true);
+            await Files.DownloadSelectedAsync();
+        }
+
+        private async void OnSftpRefreshClick(object sender, RoutedEventArgs e)
+        {
+            SelectSidebarTab(files: true);
+            await Files.RefreshAsync();
         }
 
         /// <summary>Keeps the title-bar button and its radio items in step with the surface.</summary>
@@ -639,6 +790,10 @@ namespace XCENA_Terminal_Dev
             }
         }
 
-        private void OnWindowClosed(object sender, WindowEventArgs args) => _surface.ShutdownAll();
+        private void OnWindowClosed(object sender, WindowEventArgs args)
+        {
+            Files.ForgetAll();
+            _surface.ShutdownAll();
+        }
     }
 }

@@ -14,12 +14,14 @@ namespace XCENA_Terminal_Dev.Controls
     /// </summary>
     internal sealed class SidebarSplitter : Grid
     {
-        public const double Thickness = 6;
+        public const double Thickness = 10;
 
-        private const double MinimumWidth = 160;
+        // Narrower than this and the endpoint line under each profile name stops being readable.
+        private const double MinimumWidth = 200;
         private const double MaximumWidth = 620;
 
-        private static readonly Windows.UI.Color IdleColor = Windows.UI.Color.FromArgb(0xFF, 0x4C, 0x50, 0x58);
+        /// <summary>Invisible at rest, like the pane dividers; the gap is the separation.</summary>
+        private static readonly Windows.UI.Color IdleColor = Microsoft.UI.Colors.Transparent;
 
         private readonly ColumnDefinition _column;
         private readonly Func<bool> _sidebarOnRight;
@@ -61,7 +63,7 @@ namespace XCENA_Terminal_Dev.Controls
         }
 
         private void SetHighlight(bool on) =>
-            Background = on ? AppAccent.HoverBrush() : new SolidColorBrush(IdleColor);
+            Background = on ? AppAccent.GripBrush() : new SolidColorBrush(IdleColor);
 
         // Window-relative: a captured pointer's transform to a specific element stops updating.
         private static double PositionOf(PointerRoutedEventArgs e) =>

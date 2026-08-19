@@ -20,8 +20,11 @@ Services/SecretProtector   DPAPI(CurrentUser)로 비밀번호·passphrase 암호
 Services/KnownHostsStore   %APPDATA%\XCENA Terminal\known_hosts.json
 Services/RecentStore       %APPDATA%\XCENA Terminal\recent.json (비밀 없음)
 Services/AppearanceStore   %APPDATA%\XCENA Terminal\appearance.json
-Services/LayoutStore       %APPDATA%\XCENA Terminal\layout.json (사이드바 폭/위치)
+Services/LayoutStore       %APPDATA%\XCENA Terminal\layout.json (사이드바, 파일 표시, 다운로드 폴더)
 Services/SshTeardown       SSH 연결 해제를 UI 스레드 밖에서 처리
+Services/SshConnectionFactory  ConnectionInfo 생성 + 호스트 키 핀 검증 (셸/SFTP 공용)
+Services/RemoteFileService     SFTP 조회 + 파일 업로드/다운로드
+Controls/RemoteFilesView       사이드바 Files 탭의 원격 트리 / 전송 UI
 ```
 
 ### 화면 배치
@@ -62,18 +65,30 @@ XamlRoot 좌표)를 읽어 그 아래 패널과 가장자리 여부를 직접 �
 
 ### 세션 관리 패널
 
-- 패널과 터미널 영역 사이 분할선을 **마우스로 끌어 폭 조절**(160~620px)
+- 패널과 터미널 영역 사이 분할선을 **마우스로 끌어 폭 조절**(200~620px)
 - 패널 헤더를 **끌어서 좌/우로 도킹** (드래그 중 반쪽 미리보기 표시), 헤더 우클릭 메뉴에도
   `Dock left` / `Dock right` / `Hide panel`
 - 폭과 위치는 `layout.json`에 저장된다
 
-패널 사이 분할선(`PaneSplitter`)은 항상 색이 칠해져 있고 마우스로 끌어 크기를 조절한다.
-드래그 좌표는 **창 기준**(`GetCurrentPoint(null)`)으로 읽는다 — 포인터가 캡처된 동안에는
-특정 요소 기준 변환이 갱신되지 않아 이동량이 0으로 고정되기 때문이다.
+분할선 드래그 좌표는 **창 기준**(`GetCurrentPoint(null)`)으로 읽는다 — 포인터가 캡처된
+동안에는 특정 요소 기준 변환이 갱신되지 않아 이동량이 0으로 고정되기 때문이다.
 
-각 패널은 자기 크기에 맞춰 원격 PTY에 `window-change`를 따로 보낸다. 활성 패널 테두리는
-두께를 항상 1px로 고정하고 색만 바꿔, 강조 토글이 레이아웃(=터미널 그리드 크기)을 흔들지
-않게 했다.
+각 패널은 자기 크기에 맞춰 원격 PTY에 `window-change`를 따로 보낸다.
+
+### 카드 외형
+
+패널은 **카드**로 그린다 — 모서리 반경 8px, 테두리 없음. 구분은 선이 아니라 **여백**이
+담당한다:
+
+- `SessionSurface`의 배경은 투명이라 패널 사이 간격으로 창 배경(Mica)이 드러난다
+- 분할선(`PaneSplitter`, `SidebarSplitter`)은 평소 투명하고, 그 10px 폭이 곧 카드 사이
+  간격이다. 마우스를 올리면 반투명 강조색만 비친다
+- 비활성 카드는 테두리가 아예 없고, **활성 카드만** 1px 강조색 링이 붙는다(패널이 2개
+  이상일 때만). 테두리 두께는 언제나 1px로 고정하고 색만 바꿔, 강조 토글이 레이아웃
+  (=터미널 그리드 크기)을 흔들지 않게 했다
+
+`Border`에 `CornerRadius`를 주면 자식까지 클리핑되므로, 안쪽 `TabView`의 사각 모서리가
+카드 밖으로 삐져나오지 않는다.
 
 ### 색상
 
@@ -87,6 +102,106 @@ XamlRoot 좌표)를 읽어 그 아래 패널과 가장자리 여부를 직접 �
 
 xterm에는 `h` 태그로 테마 패치(JSON)를 보낸다. 페이지가 아직 로딩 중이면 값을 기억해 두고
 `ready` 이후에 다시 보낸다. 패치는 기본 팔레트(16색 등)를 유지한 채 병합된다.
+
+### 원격 폴더 트리 (사이드바 Files 탭)
+
+사이드바 안쪽 가장자리에 **세로 탭 레일**이 있다(아이콘 두 개: Sessions, Files). 선택된 쪽에
+버건디 마커가 붙고 이름은 툴팁으로 보여준다 — 좁은 사이드바에서 가로 탭보다 폭을 덜 먹는다.
+
+`Files`는 **활성 세션이 로그인한 디렉터리**를 루트로 원격 트리를 보여준다. 기본은 **폴더만**
+표시한다 — 이 트리는 폴더를 고르는 도구(이동하거나 업로드를 놓을 대상)이고, 홈 디렉터리만 해도
+파일이 폴더를 덮어 버린다. 파일까지 보려면 `Options > SFTP > Show files in the tree`를 켠다.
+헤더에 현재 경로와 버튼 네 개가 있다.
+
+| 버튼 | 동작 |
+|---|---|
+| `↑` | 선택한 폴더로 파일 업로드 (파일 선택 창) |
+| `⌃` | 상위 폴더로 루트 이동 (`/`에서는 비활성) |
+| `⌂` | 로그인 디렉터리로 복귀 |
+| `⟳` | 다시 읽기 (연결이 끊겼으면 재연결) |
+
+상위 경로는 POSIX 규칙으로 계산한다: `/home/root → /home → /`, 끝의 `/`는 무시하고
+(`/a/b/c/ → /a/b`), `/`에서는 더 올라가지 않는다.
+
+- 자식은 노드를 펼칠 때 가져온다(`TreeView.Expanding` + `HasUnrealizedChildren`). 원격
+  파일시스템을 미리 다 걷는 건 쓸 수 없다
+- 이름순 정렬. 행에는 **이름만** 둔다 — 좁은 사이드바에서 크기 열은 이름을 잘라먹기만 한다
+- 선택된 행은 버건디 톤으로 칠한다. WinUI 기본값은 검정 3.5%(`#09000000`)여서 거의 안 보이는데,
+  업로드가 어디로 갈지 알려 주는 표시이므로 눈에 보여야 한다. 왼쪽 인디케이터 막대는
+  `TreeViewItemSelectionIndicatorForeground`가 시스템 파랑으로 하드코딩되어 있어
+  `AccentFillColor*` override를 따라오지 않으므로 따로 지정했다
+- 심볼릭 링크는 자기 속성이 링크를 가리키므로 디렉터리 링크가 파일로 걸러진다. 링크일 때만
+  `GetAttributesAsync`로 대상을 한 번 확인해 폴더면 남긴다
+- 폴더를 클릭하면 그 자리에서 펼치거나 접는다. 셸에 `cd`를 대신 입력하지는 않는다 —
+  둘러보는 동작이 세션의 작업 디렉터리를 몰래 바꾸면 안 된다
+- **우클릭 메뉴**는 대상에 따라 항목이 달라진다. 폴더면 `Go to this folder`(셸에
+  `cd '<경로>'` 입력) · `Upload files here…` · `Copy path`, 파일이면 `Download…` · `Copy path`.
+  오류 행에서는 메뉴가 열리지 않는다 — 그건 장소가 아니다. 디렉터리를 옮기는 건 이 메뉴에서만
+  일어난다(명시적인 선택이므로). 우클릭은 그 행을 **선택**도 하므로 메뉴·업로드 버튼·드롭이 모두
+  같은 항목을 가리킨다. 항목 표시 여부는 `Tag`로 가리고, 명령은 `Tree.SelectedNode`를 읽는다:
+  템플릿 안에서는 `x:Name`이 코드로 잡히지 않고, `ContextFlyout`은 별도 비주얼 트리라
+  `DataContext`에 의존하지 않는 편이 안전하다
+- 권한 오류는 그 노드 안에 인라인으로 표시한다 — 폴더 하나가 막혔다고 트리 전체를 비우지 않는다
+
+#### 파일 업로드
+
+같은 SFTP 연결로 **업로드**를 한다. 두 가지 방법이 있다.
+
+- 헤더의 `↑` 버튼 → 파일 선택 창(여러 개 선택 가능)
+- **탐색기에서 파일을 끌어 Files 패널에 놓기.** 끄는 동안 트리에 버건디 테두리가 생기고,
+  마우스 커서 옆에 받는 경로가 `Upload to <경로>`로 표시된다
+
+받는 위치는 두 방법 모두 **트리에서 선택한 폴더**로 정한다. 아무것도 선택하지 않았으면 현재
+루트로 간다. 파일을 놓은 자리는 보지 않는다:
+놓는 동작은 정확하지 않고, 선택은 사용자가 의도해서 한 것이며, 어디로 갈지는 놓기 전에 커서
+옆 `Upload to <경로>`로 이미 보여 주기 때문이다.
+
+- 같은 이름이 이미 있으면 `Overwrite` / `Overwrite all` / `Skip`을 묻는다. 조용히 덮어쓰지
+  않는다 — 원격 파일을 지우는 건 되돌릴 수 없다
+- 진행률은 패널 아래쪽 줄에 파일 이름·`n/전체`·전체 바이트 기준 막대로 표시하고, `✕`로 취소한다.
+  취소하면 "n / 전체까지 업로드했다"고 알려 준다(이미 전송된 파일은 남는다)
+- 끝나면 대상 폴더만 다시 읽는다. 아직 펼치지 않은 폴더는 건드리지 않는다 — 어차피 처음
+  펼칠 때 최신 목록을 가져온다
+- 폴더는 아직 지원하지 않는다(재귀 업로드 없음). 폴더를 놓으면 그렇게 안내한다
+- 세션이 닫히면 진행 중인 업로드도 함께 취소된다 — 그 연결이 사라지기 때문이다
+
+#### 파일 다운로드
+
+파일을 우클릭해 `Download…`, 또는 `Options > SFTP > Download selected file…`. 파일이 보여야
+고를 수 있으니 `Show files in the tree`가 켜져 있어야 한다(꺼져 있으면 메뉴 항목이 그렇게 알려
+준다).
+
+- **다운로드 폴더가 설정되어 있으면** 묻지 않고 그 폴더에 원격 파일 이름 그대로 저장한다.
+  같은 이름이 있으면 그때만 덮어쓸지 확인한다. 폴더가 없어졌거나 쓸 수 없으면 실패시키지 않고
+  저장 대화상자로 넘어간다
+- **설정되어 있지 않으면**(기본값) 저장 대화상자가 위치와 이름을 정한다. 덮어쓰기 확인도
+  Windows가 처리하므로 앱이 다시 묻지 않는다
+- 받는 동안 `.part` 임시 파일에 쓰고 끝나면 제 이름으로 옮긴다 — 중간에 끊긴 파일이 완전한
+  다운로드로 보이면 안 된다. 실패하면 `.part`는 지운다
+- 진행률은 업로드와 같은 줄에 `받은 크기 / 전체 크기`로 표시하고 `✕`로 취소한다
+
+#### Options 메뉴
+
+제목줄의 `Options` 버튼에 SFTP 관련 항목이 모여 있다.
+
+| Options > SFTP | 동작 |
+|---|---|
+| `Show files in the tree` | 파일 표시 토글. 목록 내용이 바뀌므로 트리를 다시 읽는다. `layout.json`에 저장된다 |
+| `Upload files…` | 헤더 `↑` 버튼과 동일 |
+| `Download selected file…` | 선택한 파일 저장 |
+| `Download folder: <경로>` | 다운로드 폴더 선택. 현재 값이 항목 이름에 그대로 보인다 |
+| `Ask where to save each file` | 다운로드 폴더를 해제해 매번 대화상자로 묻게 한다 (설정돼 있을 때만 활성) |
+| `Refresh folder tree` | 다시 읽기 |
+
+메뉴가 열릴 때(`Opening`)마다 상태를 계산한다 — 연결이 없거나 전송 중이면 해당 항목을 끈다.
+계속 추적하는 대신 열 때 한 번 판단하면 상태가 어긋날 일이 없다. 어느 항목을 눌러도 사이드바가
+Files 탭으로 전환된다: 진행률이 그 안에 표시되기 때문이다.
+
+**SFTP는 셸과 별도의 연결이다.** SSH.NET은 `ShellStream`이 이미 쓰고 있는 채널에 SFTP
+서브시스템을 열 수 없다. 그래서 `SshConnectionFactory`를 셸과 공유해 인증 방식과
+**호스트 키 핀 검증을 동일하게** 적용한다 — 검증을 건너뛰는 두 번째 채널이 있으면 핀의 의미가
+없어진다. 연결은 세션별로 캐시되므로 탭을 왕복해도 재인증하지 않고, 세션이 닫히면
+(`SessionSurface.SessionClosing`) 함께 정리된다.
 
 ### 자동 재접속
 
@@ -204,6 +319,32 @@ dotnet build XCENA_Terminal_Dev\XCENA_Terminal_Dev\XCENA_Terminal_Dev.csproj `
 기존 `obj\x64`의 생성 코드가 중복 컴파일되어 CS0579로 깨진다. 언패키지 빌드는 `obj`를
 공유하므로, 이후 VS에서 패키지 빌드를 할 때 한 번 다시 빌드하면 정상 상태로 돌아온다.
 
+### 다른 사람에게 배포 (설치 없이 바로 실행)
+
+자체 포함 언패키지로 게시한다. .NET 런타임과 Windows App SDK 런타임을 함께 넣으므로 받는
+쪽은 아무것도 설치하지 않는다.
+
+```powershell
+dotnet publish XCENA_Terminal_Dev\XCENA_Terminal_Dev\XCENA_Terminal_Dev.csproj `
+  -c Release -p:Platform=x64 -p:PublishProfile=standalone-x64
+```
+
+산출물: `XCENA_Terminal_Dev\XCENA_Terminal_Dev\bin\Publish\standalone-x64\`
+(522개 파일 / 274 MB, zip 압축 시 약 102 MB). 폴더째 zip으로 묶어 전달하면 압축을 풀고
+`XCENA_Terminal_Dev.exe`를 바로 실행할 수 있다.
+
+**받는 쪽 요구사항은 WebView2 런타임 하나뿐이다.** Windows 11에는 기본 포함이고 Windows
+10도 Edge 업데이트로 대개 설치돼 있다. 없으면 터미널 오버레이가 설치 링크를 안내한다.
+
+설정 파일(`profiles.json` 등)은 실행 파일 옆이 아니라 사용자별
+`%APPDATA%\XCENA Terminal\`에 만들어지므로, 같은 폴더를 여러 사람이 공유해도 서로 섞이지
+않는다.
+
+주의 — **언패키지 게시는 컴파일된 XAML(`*.xbf`)과 앱 리소스 인덱스(`*.pri`)를 게시 폴더에
+복사하지 않는다.** 빌드 출력에는 있지만 게시 출력에서 빠지고, 그러면 실행 즉시
+`Microsoft.UI.Xaml.dll`에서 `0xC000027B`(E_FAIL)로 죽는다. csproj의
+`IncludeXamlArtifactsInPublish` 타깃이 이 세 파일을 게시 항목에 다시 넣어 준다.
+
 MSIX로 배포/등록할 때는 Windows **개발자 모드**가 켜져 있어야 하고, Debug 구성은
 `Microsoft.VCLibs.140.00.Debug.UWPDesktop` 프레임워크 패키지가 필요하다
 (`Windows Kits\10\ExtensionSDKs\Microsoft.VCLibs.Desktop\14.0\Appx\Debug\x64\`).
@@ -223,7 +364,7 @@ MSIX로 배포/등록할 때는 Windows **개발자 모드**가 켜져 있어야
 
 ## 아직 없는 것
 
-- SFTP 파일 전송
+- 폴더 단위(재귀) 전송, 원격 파일 이름 변경/삭제/새 폴더 만들기
 - 세션 로그 저장, 스크롤백 검색
 - 점프 호스트 / 포트 포워딩
 - SSH 에이전트(Pageant, OpenSSH agent) 연동 — 현재는 키 파일 직접 지정만 지원

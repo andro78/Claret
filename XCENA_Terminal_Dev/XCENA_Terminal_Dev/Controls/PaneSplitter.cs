@@ -17,10 +17,14 @@ namespace XCENA_Terminal_Dev.Controls
         /// <summary>Panes never shrink below this, so a drag cannot make one disappear.</summary>
         private const double MinimumPaneSize = 80;
 
-        public const double Thickness = 8;
+        /// <summary>Also the gap between cards, so it doubles as the visual separation.</summary>
+        public const double Thickness = 10;
 
-        /// <summary>Always painted, so the boundary between panes is unmistakable.</summary>
-        private static readonly Windows.UI.Color IdleColor = Windows.UI.Color.FromArgb(0xFF, 0x4C, 0x50, 0x58);
+        /// <summary>
+        /// Invisible at rest: the gap it occupies already separates the cards, and a painted bar
+        /// read as a heavy border. A translucent accent appears only under the pointer.
+        /// </summary>
+        private static readonly Windows.UI.Color IdleColor = Microsoft.UI.Colors.Transparent;
 
         private readonly Grid _grid;
         private readonly Orientation _orientation;
@@ -93,7 +97,7 @@ namespace XCENA_Terminal_Dev.Controls
         private void SetHighlight(bool on)
         {
             Background = on
-                ? AppAccent.HoverBrush()
+                ? AppAccent.GripBrush()
                 : new SolidColorBrush(IdleColor);
         }
 

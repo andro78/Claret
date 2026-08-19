@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:XCENA_Terminal_Dev"
     xmlns:models="using:XCENA_Terminal_Dev.Models"
+    xmlns:local2="using:XCENA_Terminal_Dev.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
@@ -23,6 +24,7 @@
         <!-- Drag region for the extended title bar -->
         <Grid x:Name="AppTitleBar" Grid.Row="0" Height="40" Padding="12,0,0,0">
             <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
@@ -88,8 +90,69 @@
                 <FontIcon Glyph="&#xE790;" FontSize="14" />
             </Button>
 
+            <DropDownButton x:Name="OptionsButton"
+                            Grid.Column="3"
+                            Height="30"
+                            Padding="8,0"
+                            Margin="2,0,0,0"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            ToolTipService.ToolTip="Options">
+                <TextBlock Text="Options"
+                           VerticalAlignment="Center"
+                           Style="{StaticResource CaptionTextBlockStyle}" />
+                <DropDownButton.Flyout>
+                    <!-- Opening syncs the check mark and greys out what the tree cannot do yet. -->
+                    <MenuFlyout Placement="Bottom" Opening="OnOptionsOpening">
+                        <MenuFlyoutSubItem x:Name="SftpMenu" Text="SFTP">
+                            <MenuFlyoutSubItem.Icon>
+                                <FontIcon Glyph="&#xE8B7;" />
+                            </MenuFlyoutSubItem.Icon>
+                            <ToggleMenuFlyoutItem x:Name="SftpShowFilesItem"
+                                                  Text="Show files in the tree"
+                                                  Click="OnSftpShowFilesClick" />
+                            <MenuFlyoutSeparator />
+                            <MenuFlyoutItem x:Name="SftpUploadItem"
+                                            Text="Upload files…"
+                                            Click="OnSftpUploadClick">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE898;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem x:Name="SftpDownloadItem"
+                                            Text="Download selected file…"
+                                            Click="OnSftpDownloadClick">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE896;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutSeparator />
+                            <!-- Text is rewritten on Opening to show the folder currently in use. -->
+                            <MenuFlyoutItem x:Name="SftpDownloadFolderItem"
+                                            Text="Download folder…"
+                                            Click="OnSftpDownloadFolderClick">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE8DA;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem x:Name="SftpAskEachTimeItem"
+                                            Text="Ask where to save each file"
+                                            Click="OnSftpAskEachTimeClick" />
+                            <MenuFlyoutSeparator />
+                            <MenuFlyoutItem x:Name="SftpRefreshItem"
+                                            Text="Refresh folder tree"
+                                            Click="OnSftpRefreshClick">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE72C;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                        </MenuFlyoutSubItem>
+                    </MenuFlyout>
+                </DropDownButton.Flyout>
+            </DropDownButton>
+
             <TextBlock x:Name="AppTitleText"
-                       Grid.Column="3"
+                       Grid.Column="4"
                        Margin="10,0,0,0"
                        VerticalAlignment="Center"
                        Style="{StaticResource CaptionTextBlockStyle}"
@@ -108,7 +171,6 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <!-- Drag handle: press here and drag to dock the sidebar on the other side. -->
@@ -137,13 +199,68 @@
                     </Border.ContextFlyout>
                 </Border>
 
-                <Border Grid.Row="1"
+                <!-- Vertical tab rail down the inner edge, with the cards beside it -->
+                <Grid Grid.Row="1" ColumnSpacing="2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Spacing="4" VerticalAlignment="Top">
+                        <Button x:Name="SessionsTabButton"
+                                Width="34"
+                                Height="36"
+                                Padding="0"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                ToolTipService.ToolTip="Sessions"
+                                Click="OnSessionsTabClick">
+                            <Grid Width="34" Height="36">
+                                <Border x:Name="SessionsTabMarker"
+                                        Width="3"
+                                        Height="18"
+                                        CornerRadius="2"
+                                        HorizontalAlignment="Left"
+                                        VerticalAlignment="Center" />
+                                <FontIcon x:Name="SessionsTabIcon" Glyph="&#xE774;" FontSize="16" />
+                            </Grid>
+                        </Button>
+
+                        <Button x:Name="FilesTabButton"
+                                Width="34"
+                                Height="36"
+                                Padding="0"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                ToolTipService.ToolTip="Files"
+                                Click="OnFilesTabClick">
+                            <Grid Width="34" Height="36">
+                                <Border x:Name="FilesTabMarker"
+                                        Width="3"
+                                        Height="18"
+                                        CornerRadius="2"
+                                        HorizontalAlignment="Left"
+                                        VerticalAlignment="Center" />
+                                <FontIcon x:Name="FilesTabIcon" Glyph="&#xE8B7;" FontSize="16" />
+                            </Grid>
+                        </Button>
+                    </StackPanel>
+
+                    <Grid Grid.Column="1">
+
+                <Border x:Name="ProfileCard"
                         Background="{ThemeResource LayerFillColorDefaultBrush}"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1"
                         CornerRadius="8">
                     <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
                         <ListView x:Name="ProfileList"
+                                  Grid.Row="0"
                                   Margin="2"
                                   SelectionMode="Single"
                                   DoubleTapped="OnProfileDoubleTapped"
@@ -152,10 +269,12 @@
                                 <DataTemplate x:DataType="models:ConnectionProfile">
                                     <StackPanel Padding="4,6" Spacing="1">
                                         <TextBlock Text="{x:Bind DisplayName}"
+                                                   TextWrapping="NoWrap"
                                                    TextTrimming="CharacterEllipsis" />
                                         <TextBlock Text="{x:Bind Endpoint}"
                                                    Style="{StaticResource CaptionTextBlockStyle}"
                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                   TextWrapping="NoWrap"
                                                    TextTrimming="CharacterEllipsis" />
                                     </StackPanel>
                                 </DataTemplate>
@@ -184,6 +303,7 @@
                         </ListView>
 
                         <TextBlock x:Name="NoProfilesText"
+                                   Grid.Row="0"
                                    Margin="16"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center"
@@ -192,20 +312,39 @@
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    Text="No saved connections.&#x0a;Tick 'Save to profile list' when you connect." />
+                        <!-- Inside the card: the action belongs to the list it acts on -->
+                        <Border Grid.Row="1"
+                                Padding="6"
+                                BorderThickness="0,1,0,0"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+                            <Button x:Name="NewConnectionButton"
+                                    HorizontalAlignment="Stretch"
+                                    Style="{StaticResource AccentButtonStyle}"
+                                    ToolTipService.ToolTip="Ctrl+Shift+T"
+                                    Click="OnNewConnectionClick">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE710;" FontSize="14" />
+                                    <TextBlock Text="New connection" />
+                                </StackPanel>
+                            </Button>
+                        </Border>
                     </Grid>
                 </Border>
 
-                <Button Grid.Row="2"
-                        Margin="0,8,0,0"
-                        HorizontalAlignment="Stretch"
-                        Style="{StaticResource AccentButtonStyle}"
-                        ToolTipService.ToolTip="Ctrl+Shift+T"
-                        Click="OnNewConnectionClick">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <FontIcon Glyph="&#xE710;" FontSize="14" />
-                        <TextBlock Text="New connection" />
-                    </StackPanel>
-                </Button>
+                <Border x:Name="FilesCard"
+                        Padding="2"
+                        Visibility="Collapsed"
+                        Background="{ThemeResource LayerFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                    <local2:RemoteFilesView x:Name="Files" />
+                </Border>
+
+                    </Grid>
+                </Grid>
+
+
             </Grid>
 
             <!-- Sessions: the tab strip only selects; every terminal lives in SurfaceHost. -->

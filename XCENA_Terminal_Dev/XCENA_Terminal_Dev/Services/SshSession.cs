@@ -71,43 +71,19 @@ namespace XCENA_Terminal_Dev.Services
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
 
-            ConnectionInfo connectionInfo = BuildConnectionInfo(profile, secret);
+            ConnectionInfo connectionInfo = SshConnectionFactory.Build(profile, secret);
             var client = new SshClient(connectionInfo);
-            string? hostKeyFailure = null;
-
-            client.HostKeyReceived += (_, e) =>
-            {
-                HostKeyVerdict verdict = KnownHostsStore.Instance.Verify(
-                    profile.Host, profile.Port, e.HostKeyName, e.FingerPrintSHA256);
-
-                switch (verdict)
-                {
-                    case HostKeyVerdict.Pinned:
-                        e.CanTrust = true;
-                        Notice?.Invoke(this, $"Pinned a new host key.\n  {e.HostKeyName} SHA256:{e.FingerPrintSHA256}\n");
-                        break;
-
-                    case HostKeyVerdict.Trusted:
-                        e.CanTrust = true;
-                        break;
-
-                    default:
-                        e.CanTrust = false;
-                        hostKeyFailure =
-                            $"The host key differs from the pinned one ({e.HostKeyName} SHA256:{e.FingerPrintSHA256}). " +
-                            "The server may have been reinstalled, or this may be a man-in-the-middle attack. Verify it, then use \"Forget host key\" on the profile and reconnect.";
-                        break;
-                }
-            };
+            HostKeyGate hostKey = SshConnectionFactory.GuardHostKey(
+                client, profile, line => Notice?.Invoke(this, line));
 
             try
             {
                 await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
             }
-            catch (SshConnectionException) when (hostKeyFailure is not null)
+            catch (SshConnectionException) when (hostKey.Failure is not null)
             {
                 client.Dispose();
-                throw new HostKeyMismatchException(hostKeyFailure);
+                throw new HostKeyMismatchException(hostKey.Failure);
             }
             catch
             {
@@ -115,10 +91,10 @@ namespace XCENA_Terminal_Dev.Services
                 throw;
             }
 
-            if (hostKeyFailure is not null)
+            if (hostKey.Failure is not null)
             {
                 client.Dispose();
-                throw new HostKeyMismatchException(hostKeyFailure);
+                throw new HostKeyMismatchException(hostKey.Failure);
             }
 
             try
@@ -281,68 +257,6 @@ namespace XCENA_Terminal_Dev.Services
             }
 
             Closed?.Invoke(this, reason);
-        }
-
-        private static ConnectionInfo BuildConnectionInfo(ConnectionProfile profile, string? secret)
-        {
-            if (string.IsNullOrWhiteSpace(profile.Host))
-            {
-                throw new ArgumentException("Enter a host.", nameof(profile));
-            }
-
-            if (string.IsNullOrWhiteSpace(profile.Username))
-            {
-                throw new ArgumentException("Enter a user name.", nameof(profile));
-            }
-
-            var methods = new List<AuthenticationMethod>();
-
-            if (profile.AuthMode == SshAuthMode.PrivateKey)
-            {
-                if (string.IsNullOrWhiteSpace(profile.PrivateKeyPath))
-                {
-                    throw new ArgumentException("Enter the private key file path.", nameof(profile));
-                }
-
-                if (!File.Exists(profile.PrivateKeyPath))
-                {
-                    throw new FileNotFoundException($"Private key file not found: {profile.PrivateKeyPath}");
-                }
-
-                PrivateKeyFile keyFile = string.IsNullOrEmpty(secret)
-                    ? new PrivateKeyFile(profile.PrivateKeyPath)
-                    : new PrivateKeyFile(profile.PrivateKeyPath, secret);
-
-                methods.Add(new PrivateKeyAuthenticationMethod(profile.Username, keyFile));
-            }
-            else
-            {
-                string password = secret ?? string.Empty;
-                methods.Add(new PasswordAuthenticationMethod(profile.Username, password));
-
-                // Many sshd configurations only offer keyboard-interactive for passwords.
-                var interactive = new KeyboardInteractiveAuthenticationMethod(profile.Username);
-                interactive.AuthenticationPrompt += (_, e) =>
-                {
-                    foreach (AuthenticationPrompt prompt in e.Prompts)
-                    {
-                        // "암호" catches Korean-localised sshd prompts. This matches text sent by
-                        // the remote server, not app UI, so it stays.
-                        if (prompt.Request.Contains("password", StringComparison.OrdinalIgnoreCase) ||
-                            prompt.Request.Contains("암호", StringComparison.Ordinal))
-                        {
-                            prompt.Response = password;
-                        }
-                    }
-                };
-                methods.Add(interactive);
-            }
-
-            return new ConnectionInfo(profile.Host, profile.Port, profile.Username, methods.ToArray())
-            {
-                Timeout = TimeSpan.FromSeconds(20),
-                Encoding = Encoding.UTF8,
-            };
         }
 
         public void Dispose()

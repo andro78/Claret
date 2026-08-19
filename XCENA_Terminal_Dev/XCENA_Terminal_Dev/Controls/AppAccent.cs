@@ -17,10 +17,15 @@ namespace XCENA_Terminal_Dev.Controls
         /// <summary>Translucent fill for the drag-and-drop preview.</summary>
         public static readonly Color DropFill = Color.FromArgb(0x55, 0x8C, 0x23, 0x32);
 
+        /// <summary>Hover tint for the otherwise invisible dividers.</summary>
+        public static readonly Color Grip = Color.FromArgb(0x70, 0x8C, 0x23, 0x32);
+
         public static SolidColorBrush Brush() => new(Default);
 
         public static SolidColorBrush HoverBrush() => new(Hover);
 
         public static SolidColorBrush DropFillBrush() => new(DropFill);
+
+        public static SolidColorBrush GripBrush() => new(Grip);
     }
 }

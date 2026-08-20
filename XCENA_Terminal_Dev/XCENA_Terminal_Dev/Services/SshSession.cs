@@ -32,6 +32,9 @@ namespace XCENA_Terminal_Dev.Services
 
         private readonly object _gate = new();
 
+        private long _bytesReceived;
+        private long _bytesSent;
+
         private SshClient? _client;
         private ShellStream? _shell;
         private Task? _readerTask;
@@ -52,6 +55,12 @@ namespace XCENA_Terminal_Dev.Services
         /// Available from the moment the handshake completes, even on hosts that run no commands.
         /// </summary>
         public string? ServerVersion { get; private set; }
+
+        /// <summary>Shell bytes read from the far end since this session opened.</summary>
+        public long BytesReceived => Interlocked.Read(ref _bytesReceived);
+
+        /// <summary>Shell bytes written to the far end since this session opened.</summary>
+        public long BytesSent => Interlocked.Read(ref _bytesSent);
 
         public bool IsConnected
         {
@@ -218,6 +227,7 @@ namespace XCENA_Terminal_Dev.Services
             {
                 shell.Write(data, 0, data.Length);
                 shell.Flush();
+                Interlocked.Add(ref _bytesSent, data.Length);
             }
             catch (Exception ex) when (ex is ObjectDisposedException or IOException or SshException)
             {
@@ -279,6 +289,8 @@ namespace XCENA_Terminal_Dev.Services
                     {
                         break;
                     }
+
+                    Interlocked.Add(ref _bytesReceived, read);
 
                     byte[] chunk = new byte[read];
                     Buffer.BlockCopy(buffer, 0, chunk, 0, read);

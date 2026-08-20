@@ -33,6 +33,7 @@ namespace XCENA_Terminal_Dev.Controls
         private TerminalAppearance? _appearance;
         private List<HighlightRule>? _highlights;
         private bool _copyOnSelect = true;
+        private bool _autoApprove;
         private bool _pruneQueued;
 
         public SessionSurface()
@@ -92,6 +93,7 @@ namespace XCENA_Terminal_Dev.Controls
             view.StateChanged += OnSessionStateChanged;
             view.TitleChanged += OnSessionTitleChanged;
             view.PlatformDetected += OnSessionPlatformDetected;
+            view.AutoApproved += OnSessionAutoApproved;
 
             var tab = new TabViewItem
             {
@@ -115,6 +117,7 @@ namespace XCENA_Terminal_Dev.Controls
             }
 
             view.ApplyCopyOnSelect(_copyOnSelect);
+            view.ApplyAutoApprove(_autoApprove);
 
             SetActive(leaf, notify: false);
             RefreshChrome();
@@ -142,6 +145,7 @@ namespace XCENA_Terminal_Dev.Controls
             view.StateChanged -= OnSessionStateChanged;
             view.TitleChanged -= OnSessionTitleChanged;
             view.PlatformDetected -= OnSessionPlatformDetected;
+            view.AutoApproved -= OnSessionAutoApproved;
 
             TabViewItem? tab = leaf.Group.Detach(view);
             if (tab is not null)
@@ -211,6 +215,20 @@ namespace XCENA_Terminal_Dev.Controls
                 foreach (TerminalView view in leaf.Group.Sessions)
                 {
                     view.ApplyCopyOnSelect(enabled);
+                }
+            }
+        }
+
+        /// <summary>Pushes the AI auto-approve preference to every terminal, and to any opened later.</summary>
+        public void ApplyAutoApprove(bool enabled)
+        {
+            _autoApprove = enabled;
+
+            foreach (PaneLeafNode leaf in Leaves())
+            {
+                foreach (TerminalView view in leaf.Group.Sessions)
+                {
+                    view.ApplyAutoApprove(enabled);
                 }
             }
         }
@@ -727,6 +745,12 @@ namespace XCENA_Terminal_Dev.Controls
                 }
             }
         }
+
+        /// <summary>Raised when a session answered an AI prompt by itself; carries the option taken.</summary>
+        public event EventHandler<string>? AutoApproved;
+
+        private void OnSessionAutoApproved(object? sender, string option) =>
+            AutoApproved?.Invoke(this, option);
 
         private static SymbolIconSource Symbolic(Symbol symbol) => new() { Symbol = symbol };
 

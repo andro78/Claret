@@ -22,6 +22,13 @@ namespace XCENA_Terminal_Dev.Services
         public bool CopyOnSelect { get; set; } = true;
 
         /// <summary>
+        /// Answer "Yes" for an AI CLI that stops to ask whether it may run a command. Off by
+        /// default, and deliberately so: it hands the agent the approval that was the point of the
+        /// prompt. Only the first "Yes" option is ever chosen, never "and do not ask again".
+        /// </summary>
+        public bool AutoApproveAiPrompts { get; set; }
+
+        /// <summary>
         /// Where downloads are saved without asking. Empty means "show the save dialog every time",
         /// which is the default because writing to a remembered folder should be a deliberate choice.
         /// </summary>

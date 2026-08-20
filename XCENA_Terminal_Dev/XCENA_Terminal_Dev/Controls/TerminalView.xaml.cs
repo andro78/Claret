@@ -96,6 +96,7 @@ namespace XCENA_Terminal_Dev.Controls
         private uint _rows = 24;
         private int _fontSize = 14;
         private bool _copyOnSelect = true;
+        private bool _autoApprove;
 
         public TerminalView()
         {
@@ -130,6 +131,9 @@ namespace XCENA_Terminal_Dev.Controls
         /// <summary>Raised once the remote platform is known, so the tab can show its icon.</summary>
         public event EventHandler<RemotePlatform>? PlatformDetected;
 
+        /// <summary>Raised when an AI CLI prompt was answered automatically. Carries the option taken.</summary>
+        public event EventHandler<string>? AutoApproved;
+
         /// <summary>Raised when the user presses a window-level chord inside the terminal.</summary>
         public event EventHandler<TerminalCommand>? CommandRequested;
 
@@ -137,6 +141,10 @@ namespace XCENA_Terminal_Dev.Controls
 
         /// <summary>What the far end runs, once known. <see cref="RemotePlatform.Unknown"/> until then.</summary>
         public RemotePlatform Platform { get; private set; } = RemotePlatform.Unknown;
+
+        /// <summary>Shell bytes moved on this session so far, for the status bar throughput readout.</summary>
+        public (long Received, long Sent) Traffic =>
+            _session is { } session ? (session.BytesReceived, session.BytesSent) : (0, 0);
 
         public ConnectionProfile? Profile => _profile;
 
@@ -385,6 +393,21 @@ namespace XCENA_Terminal_Dev.Controls
             }
         }
 
+        /// <summary>Whether an AI CLI approval prompt is answered "Yes" without asking the user.</summary>
+        public void ApplyAutoApprove(bool enabled)
+        {
+            _autoApprove = enabled;
+            PostAutoApprove();
+        }
+
+        private void PostAutoApprove()
+        {
+            if (_webViewReady)
+            {
+                Post(_autoApprove ? "a1" : "a0");
+            }
+        }
+
         public void ChangeFontSize(int delta)
         {
             int next = Math.Clamp(_fontSize + delta, 8, 28);
@@ -462,6 +485,7 @@ namespace XCENA_Terminal_Dev.Controls
             PostAppearance();
             PostHighlights();
             PostCopyOnSelect();
+            PostAutoApprove();
         }
 
         private void OnWebMessageReceived(CoreWebView2 sender, CoreWebView2WebMessageReceivedEventArgs args)
@@ -527,6 +551,10 @@ namespace XCENA_Terminal_Dev.Controls
 
                 case 'v': // paste request
                     _ = PasteFromClipboardAsync();
+                    break;
+
+                case 'n': // an AI prompt was answered on our behalf; the shell shows the rest
+                    AutoApproved?.Invoke(this, body);
                     break;
 
                 case 'k': // window-level chord

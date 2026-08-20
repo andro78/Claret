@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net.NetworkInformation;
 using System.Threading.Tasks;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -10,6 +12,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.ApplicationModel.DataTransfer;
+using Windows.Foundation;
 using Windows.Graphics;
 using Windows.Storage;
 using Windows.Storage.Pickers;
@@ -44,9 +47,36 @@ namespace XCENA_Terminal_Dev
         private readonly SessionSurface _surface = new();
         private readonly IntPtr _windowHandle;
 
+        /// <summary>Width of the icon rail, which is all that is left when the panel is collapsed.</summary>
+        private const double RailWidth = 34;
+
+        /// <summary>How far the pointer must travel on the rail before it counts as a dock drag.</summary>
+        private const double DockDragThreshold = 6;
+
+        /// <summary>How often the host is pinged for the status bar. Latency is not worth more.</summary>
+        private const long PingIntervalMilliseconds = 4000;
+
+        private readonly Stopwatch _statusClock = Stopwatch.StartNew();
+
+        private TerminalView? _trafficView;
+        private (long At, long Received, long Sent)? _trafficMark;
+        private string _lastAutoApproved = string.Empty;
+        private string? _pingHost;
+        private long _pingMilliseconds = -1;
+        private long _pingTakenAt = -PingIntervalMilliseconds;
+        private bool _pingInFlight;
+
         private SidebarSplitter? _sidebarSplitter;
+        private Border? _dockHint;
         private Microsoft.UI.Dispatching.DispatcherQueueTimer? _imeTimer;
         private ImeMode _imeMode = ImeMode.Unavailable;
+
+        private SidebarTab _sidebarTab = SidebarTab.Sessions;
+        private Point _dockDragStart;
+        private bool _dockDragPending;
+        private bool _dockDragging;
+        private bool _dockDragHandled;
+        private bool _dockHintOnRight;
 
         private bool _sidebarVisible = true;
         private bool _dialogOpen;
@@ -104,6 +134,8 @@ namespace XCENA_Terminal_Dev
             };
             _surface.ApplyHighlights(_highlightStore.Rules);
             _surface.ApplyCopyOnSelect(_layoutStore.Current.CopyOnSelect);
+            _surface.ApplyAutoApprove(_layoutStore.Current.AutoApproveAiPrompts);
+            _surface.AutoApproved += OnSurfaceAutoApproved;
 
             _surface.WindowCommandRequested += OnSurfaceWindowCommand;
             _surface.NewSessionRequested += (_, _) => ShowNewSessionMenu(_surface.ActiveAddAnchor);
@@ -128,7 +160,7 @@ namespace XCENA_Terminal_Dev
 
             if (_profileStore.LoadError is not null)
             {
-                AppTitleText.Text = $"XCENA Terminal — cannot read profiles: {_profileStore.LoadError}";
+                AppTitleText.Text = $"Cannot read profiles: {_profileStore.LoadError}";
             }
         }
 
@@ -210,7 +242,132 @@ namespace XCENA_Terminal_Dev
             Grid.SetColumn(_sidebarSplitter, 1);
             BodyGrid.Children.Add(_sidebarSplitter);
 
+            // The press is watched on the rail, the movement on the whole window: a quick flick
+            // leaves the rail before the second pointer event arrives, and the rail alone would
+            // never see it. handledEventsToo because the rail icons handle their own presses, and
+            // a drag has to be able to start on one of them.
+            SidebarRail.AddHandler(UIElement.PointerPressedEvent,
+                new PointerEventHandler(OnRailPointerPressed), handledEventsToo: true);
+            RootGrid.AddHandler(UIElement.PointerMovedEvent,
+                new PointerEventHandler(OnRootPointerMoved), handledEventsToo: true);
+            RootGrid.AddHandler(UIElement.PointerReleasedEvent,
+                new PointerEventHandler(OnRootPointerReleased), handledEventsToo: true);
+
+            // The pointer can end up over the terminal, which is another process and swallows it.
+            // Losing capture mid-drag is therefore a normal ending: dock where the hint last was.
+            RootGrid.PointerCaptureLost += (_, _) =>
+            {
+                if (_dockDragging)
+                {
+                    EndDockDrag(dock: true, onRight: _dockHintOnRight);
+                }
+            };
+
             ApplySidebarLayout();
+        }
+
+        // ---------- dragging the panel to the other side ----------
+
+        private void OnRailPointerPressed(object sender, PointerRoutedEventArgs e)
+        {
+            _dockDragStart = e.GetCurrentPoint(RootGrid).Position;
+            _dockDragPending = true;
+            _dockDragging = false;
+        }
+
+        private void OnRootPointerMoved(object sender, PointerRoutedEventArgs e)
+        {
+            if (!_dockDragPending && !_dockDragging)
+            {
+                return;
+            }
+
+            Point here = e.GetCurrentPoint(RootGrid).Position;
+
+            if (!_dockDragging)
+            {
+                if (Math.Abs(here.X - _dockDragStart.X) < DockDragThreshold
+                    && Math.Abs(here.Y - _dockDragStart.Y) < DockDragThreshold)
+                {
+                    return;
+                }
+
+                // Past the threshold this is a drag, not a click: take the pointer so the moves
+                // keep coming wherever it goes.
+                _dockDragging = RootGrid.CapturePointer(e.Pointer);
+                _dockDragPending = false;
+
+                if (!_dockDragging)
+                {
+                    return;
+                }
+            }
+
+            ShowDockHint(here.X > RootGrid.ActualWidth / 2);
+        }
+
+        private void OnRootPointerReleased(object sender, PointerRoutedEventArgs e)
+        {
+            if (!_dockDragging)
+            {
+                _dockDragPending = false;
+                return;
+            }
+
+            bool onRight = e.GetCurrentPoint(RootGrid).Position.X > RootGrid.ActualWidth / 2;
+
+            _dockDragging = false;
+            RootGrid.ReleasePointerCapture(e.Pointer);
+            EndDockDrag(dock: true, onRight);
+        }
+
+        private void EndDockDrag(bool dock, bool onRight)
+        {
+            _dockDragPending = false;
+            _dockDragging = false;
+            HideDockHint();
+
+            if (!dock)
+            {
+                return;
+            }
+
+            // The icon under the pointer would otherwise also fire its Click and toggle the panel.
+            _dockDragHandled = true;
+            DockSidebar(onRight);
+        }
+
+        /// <summary>Half-window preview of where the panel would land.</summary>
+        private void ShowDockHint(bool onRight)
+        {
+            _dockHint ??= new Border
+            {
+                Background = AppAccent.DropFillBrush(),
+                BorderBrush = AppAccent.Brush(),
+                BorderThickness = new Thickness(2),
+                IsHitTestVisible = false,
+                Width = 220,
+            };
+
+            if (!RootGrid.Children.Contains(_dockHint))
+            {
+                Grid.SetRow(_dockHint, 1);
+                RootGrid.Children.Add(_dockHint);
+            }
+
+            _dockHintOnRight = onRight;
+            _dockHint.HorizontalAlignment = onRight ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+            _dockHint.VerticalAlignment = VerticalAlignment.Stretch;
+            _dockHint.Visibility = Visibility.Visible;
+        }
+
+        private void HideDockHint()
+        {
+            if (_dockHint is not null)
+            {
+                _dockHint.Visibility = Visibility.Collapsed;
+                RootGrid.Children.Remove(_dockHint);
+            }
         }
 
         /// <summary>The grid column the sidebar currently occupies.</summary>
@@ -227,22 +384,36 @@ namespace XCENA_Terminal_Dev
 
             Grid.SetColumn(Sidebar, onRight ? 2 : 0);
             Grid.SetColumn(SessionArea, onRight ? 0 : 2);
-            Sidebar.Margin = onRight ? new Thickness(4, 6, 8, 8) : new Thickness(8, 6, 4, 8);
+            Thickness margin = onRight ? new Thickness(4, 6, 8, 8) : new Thickness(8, 6, 4, 8);
+            Sidebar.Margin = margin;
 
-            Sidebar.Visibility = _sidebarVisible ? Visibility.Visible : Visibility.Collapsed;
+            // The rail belongs on the window edge: left of the cards when docked left, right of
+            // them when docked right. The Auto column travels with it.
+            Grid.SetColumn(SidebarRail, onRight ? 1 : 0);
+            Grid.SetColumn(SidebarCards, onRight ? 0 : 1);
+            SidebarInnerLeft.Width = onRight ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
+            SidebarInnerRight.Width = onRight ? GridLength.Auto : new GridLength(1, GridUnitType.Star);
+
+            // The selected-tab bar sits on the outer edge, so it flips with the rail.
+            HorizontalAlignment markerEdge = onRight ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+            SessionsTabMarker.HorizontalAlignment = markerEdge;
+            FilesTabMarker.HorizontalAlignment = markerEdge;
+            ToolsTabMarker.HorizontalAlignment = markerEdge;
+
+            // Collapsing hides the cards but keeps the icon rail: clicking an icon is how the
+            // panel comes back, so the way in must stay on screen.
+            SidebarCards.Visibility = _sidebarVisible ? Visibility.Visible : Visibility.Collapsed;
 
             if (_sidebarSplitter is not null)
             {
                 _sidebarSplitter.Visibility = _sidebarVisible ? Visibility.Visible : Visibility.Collapsed;
             }
 
-            SplitterColumn.Width = new GridLength(_sidebarVisible ? SidebarSplitter.Thickness : 0);
-            SidebarColumn.Width = new GridLength(_sidebarVisible ? width : 0);
-            SessionColumn.Width = new GridLength(1, GridUnitType.Star);
+            double railWidth = RailWidth + margin.Left + margin.Right;
 
-            PanelShowItem.IsChecked = _sidebarVisible;
-            PanelDockLeftItem.IsChecked = !onRight;
-            PanelDockRightItem.IsChecked = onRight;
+            SplitterColumn.Width = new GridLength(_sidebarVisible ? SidebarSplitter.Thickness : 0);
+            SidebarColumn.Width = new GridLength(_sidebarVisible ? width : railWidth);
+            SessionColumn.Width = new GridLength(1, GridUnitType.Star);
         }
 
         private void OnDockLeftClick(object sender, RoutedEventArgs e) => DockSidebar(onRight: false);
@@ -601,6 +772,7 @@ namespace XCENA_Terminal_Dev
             {
                 UpdateImeStatus();
                 UpdateStatusSession();
+                UpdateStatusNetwork();
                 UpdateStatusFont();
             };
             _imeTimer.Start();
@@ -608,6 +780,124 @@ namespace XCENA_Terminal_Dev
             UpdateImeStatus();
             UpdateStatusSession();
             UpdateStatusFont();
+            UpdateStatusAutoApprove();
+        }
+
+        /// <summary>
+        /// Round trip to the host, and what the session is moving. Latency comes from ICMP, which
+        /// plenty of hosts drop — a missing figure is normal, so it is simply left out rather than
+        /// reported as an error. Throughput is counted on the shell stream itself, so it always works.
+        /// </summary>
+        private void UpdateStatusNetwork()
+        {
+            TerminalView? view = _surface.ActiveView;
+
+            if (view is null || view.Profile is not { } profile)
+            {
+                _trafficMark = null;
+                SetStatusNetwork(string.Empty);
+                return;
+            }
+
+            if (view.State != TerminalState.Connected)
+            {
+                _trafficMark = null;
+                SetStatusNetwork(view.State switch
+                {
+                    TerminalState.Connecting => "connecting…",
+                    TerminalState.Reconnecting => "reconnecting…",
+                    TerminalState.Failed or TerminalState.Disconnected => "offline",
+                    _ => string.Empty,
+                });
+                return;
+            }
+
+            (long received, long sent) = view.Traffic;
+            long elapsed = _statusClock.ElapsedMilliseconds;
+
+            string rates = string.Empty;
+            if (_trafficMark is { } mark && ReferenceEquals(_trafficView, view) && elapsed > mark.At)
+            {
+                double seconds = (elapsed - mark.At) / 1000.0;
+                rates = $"↓{Rate((received - mark.Received) / seconds)} ↑{Rate((sent - mark.Sent) / seconds)}";
+            }
+
+            _trafficView = view;
+            _trafficMark = (elapsed, received, sent);
+
+            // The ping is much slower than this tick, so it runs on its own interval and the last
+            // answer is reused in between.
+            StartPing(profile.Host, elapsed);
+
+            string latency = _pingHost == profile.Host && _pingMilliseconds >= 0
+                ? $"{_pingMilliseconds} ms"
+                : string.Empty;
+
+            SetStatusNetwork(string.Join("  ", new[] { latency, rates }.Where(part => part.Length > 0)));
+        }
+
+        private void SetStatusNetwork(string text)
+        {
+            if (StatusNetwork.Text != text)
+            {
+                StatusNetwork.Text = text;
+            }
+        }
+
+        /// <summary>One ICMP probe every few seconds, never more than one in flight.</summary>
+        private void StartPing(string host, long now)
+        {
+            if (_pingInFlight || now - _pingTakenAt < PingIntervalMilliseconds)
+            {
+                return;
+            }
+
+            _pingInFlight = true;
+            _pingTakenAt = now;
+
+            _ = MeasureLatencyAsync(host);
+        }
+
+        private async Task MeasureLatencyAsync(string host)
+        {
+            long milliseconds = -1;
+
+            try
+            {
+                using var ping = new Ping();
+                PingReply reply = await ping.SendPingAsync(host, TimeSpan.FromSeconds(1)).ConfigureAwait(true);
+
+                if (reply.Status == IPStatus.Success)
+                {
+                    milliseconds = reply.RoundtripTime;
+                }
+            }
+            catch (Exception)
+            {
+                // No ICMP, no name resolution, no network. The readout just omits the latency.
+            }
+            finally
+            {
+                _pingHost = host;
+                _pingMilliseconds = milliseconds;
+                _pingInFlight = false;
+            }
+        }
+
+        /// <summary>Bytes per second in the shortest form that stays readable.</summary>
+        private static string Rate(double bytesPerSecond)
+        {
+            if (bytesPerSecond < 0 || double.IsNaN(bytesPerSecond))
+            {
+                bytesPerSecond = 0;
+            }
+
+            return bytesPerSecond switch
+            {
+                < 1024 => $"{bytesPerSecond:0} B/s",
+                < 1024 * 1024 => $"{bytesPerSecond / 1024:0.#} kB/s",
+                _ => $"{bytesPerSecond / (1024 * 1024):0.#} MB/s",
+            };
         }
 
         /// <summary>
@@ -692,6 +982,59 @@ namespace XCENA_Terminal_Dev
                 copy.Click += (_, _) => CopyText(captured.Script);
                 AiMenu.Items.Add(copy);
             }
+
+            AiMenu.Items.Add(new MenuFlyoutSeparator());
+
+            // Says what it does in full: this answers a prompt whose whole purpose was to ask.
+            var auto = new ToggleMenuFlyoutItem
+            {
+                Text = "Answer \"Yes, proceed\" automatically",
+                IsChecked = _layoutStore.Current.AutoApproveAiPrompts,
+            };
+            auto.Click += OnAutoApproveClick;
+            AiMenu.Items.Add(auto);
+        }
+
+        /// <summary>
+        /// Turns the auto-answer on or off. Only the plain "Yes" is ever chosen — never the
+        /// "and do not ask again" variant, which would surrender every later prompt as well.
+        /// </summary>
+        private void OnAutoApproveClick(object sender, RoutedEventArgs e)
+        {
+            if (sender is not ToggleMenuFlyoutItem item)
+            {
+                return;
+            }
+
+            _layoutStore.Current.AutoApproveAiPrompts = item.IsChecked;
+            _layoutStore.Save();
+            _surface.ApplyAutoApprove(item.IsChecked);
+            UpdateStatusAutoApprove();
+        }
+
+        /// <summary>
+        /// Records what was answered, so the status bar can name the last prompt taken rather than
+        /// only that the automation is armed.
+        /// </summary>
+        private void OnSurfaceAutoApproved(object? sender, string option)
+        {
+            int colon = option.IndexOf(':');
+            _lastAutoApproved = colon >= 0 && colon + 1 < option.Length
+                ? option[(colon + 1)..].Trim()
+                : option.Trim();
+
+            UpdateStatusAutoApprove();
+        }
+
+        /// <summary>The status bar carries the state: an automation this quiet needs to be visible.</summary>
+        private void UpdateStatusAutoApprove()
+        {
+            bool on = _layoutStore.Current.AutoApproveAiPrompts;
+
+            StatusAutoApprove.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+            StatusAutoApprove.Text = _lastAutoApproved.Length > 0
+                ? $"auto-yes · {_lastAutoApproved}"
+                : "auto-yes";
         }
 
         /// <summary>
@@ -805,14 +1148,45 @@ namespace XCENA_Terminal_Dev
 
         // ---------- sidebar tabs ----------
 
-        private void OnSessionsTabClick(object sender, RoutedEventArgs e) => SelectSidebarTab(SidebarTab.Sessions);
+        private void OnSessionsTabClick(object sender, RoutedEventArgs e) => ClickSidebarTab(SidebarTab.Sessions);
 
-        private void OnFilesTabClick(object sender, RoutedEventArgs e) => SelectSidebarTab(SidebarTab.Files);
+        private void OnFilesTabClick(object sender, RoutedEventArgs e) => ClickSidebarTab(SidebarTab.Files);
 
-        private void OnToolsTabClick(object sender, RoutedEventArgs e) => SelectSidebarTab(SidebarTab.Tools);
+        private void OnToolsTabClick(object sender, RoutedEventArgs e) => ClickSidebarTab(SidebarTab.Tools);
+
+        /// <summary>
+        /// The rail icons are the panel switch. A different tab shows it, the tab already showing
+        /// hides it — so one icon both opens and closes, and there is no separate panel menu.
+        /// </summary>
+        private void ClickSidebarTab(SidebarTab tab)
+        {
+            // A drag that ended on an icon docked the panel; it must not also toggle it.
+            if (_dockDragHandled)
+            {
+                _dockDragHandled = false;
+                return;
+            }
+
+            if (_sidebarVisible && tab == _sidebarTab)
+            {
+                _sidebarVisible = false;
+                ApplySidebarLayout();
+                return;
+            }
+
+            if (!_sidebarVisible)
+            {
+                _sidebarVisible = true;
+                ApplySidebarLayout();
+            }
+
+            SelectSidebarTab(tab);
+        }
 
         private void SelectSidebarTab(SidebarTab tab)
         {
+            _sidebarTab = tab;
+
             // "New connection" lives inside the profile card, so hiding the card hides it too.
             ProfileCard.Visibility = Show(tab == SidebarTab.Sessions);
             FilesCard.Visibility = Show(tab == SidebarTab.Files);
@@ -850,19 +1224,17 @@ namespace XCENA_Terminal_Dev
             _ = Files.ShowAsync(_surface.ActiveView);
         }
 
+        /// <summary>
+        /// The centre of the title bar carries whatever the active session calls itself — the
+        /// remote title if the shell set one (OSC 0/2), otherwise the endpoint. Nothing when there
+        /// is no session: an app name in its own title bar tells the user nothing.
+        /// </summary>
         private void UpdateWindowTitle()
         {
             TerminalView? view = _surface.ActiveView;
-            if (view is null)
-            {
-                AppTitleText.Text = "XCENA Terminal";
-                return;
-            }
-
-            string label = view.RemoteTitle ?? view.Profile?.Endpoint ?? string.Empty;
-            AppTitleText.Text = label.Length == 0
-                ? "XCENA Terminal"
-                : $"XCENA Terminal — {label}";
+            AppTitleText.Text = view is null
+                ? string.Empty
+                : view.RemoteTitle ?? view.Profile?.Endpoint ?? string.Empty;
         }
 
         /// <summary>

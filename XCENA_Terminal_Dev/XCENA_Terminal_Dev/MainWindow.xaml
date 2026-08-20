@@ -32,33 +32,17 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <DropDownButton x:Name="PanelButton"
-                            Grid.Column="0"
-                            Height="30"
-                            Padding="8,0"
-                            Margin="4,0,0,0"
-                            Background="Transparent"
-                            BorderThickness="0"
-                            ToolTipService.ToolTip="Panel (Ctrl+Shift+B)">
-                <FontIcon Glyph="&#xE700;" FontSize="14" />
-                <DropDownButton.Flyout>
-                    <MenuFlyout Placement="Bottom">
-                        <ToggleMenuFlyoutItem x:Name="PanelShowItem"
-                                              Text="Show panel"
-                                              KeyboardAcceleratorTextOverride="Ctrl+Shift+B"
-                                              Click="OnToggleSidebarClick" />
-                        <MenuFlyoutSeparator />
-                        <RadioMenuFlyoutItem x:Name="PanelDockLeftItem"
-                                             Text="Dock left"
-                                             GroupName="panelDock"
-                                             Click="OnDockLeftClick" />
-                        <RadioMenuFlyoutItem x:Name="PanelDockRightItem"
-                                             Text="Dock right"
-                                             GroupName="panelDock"
-                                             Click="OnDockRightClick" />
-                    </MenuFlyout>
-                </DropDownButton.Flyout>
-            </DropDownButton>
+            <!--
+                The app icon, first thing on the left. Not a button: it stays part of the drag
+                region, which is what the far left of a title bar is for.
+            -->
+            <Image x:Name="AppIcon"
+                   Grid.Column="0"
+                   Width="18"
+                   Height="18"
+                   Margin="0,0,8,0"
+                   VerticalAlignment="Center"
+                   Source="ms-appx:///Assets/AppIcon.ico" />
 
             <Button x:Name="AppearanceButton"
                     Grid.Column="1"
@@ -139,15 +123,22 @@
                 </DropDownButton.Flyout>
             </DropDownButton>
 
-            <!-- The title is what gives way when the bar runs out of room, not the buttons. -->
+            <!--
+                What the active session calls itself, centred on the window rather than on the gap
+                between the buttons — so it spans every column and never takes a click. The app
+                name is not repeated here; the taskbar already carries it.
+            -->
             <TextBlock x:Name="AppTitleText"
-                       Grid.Column="3"
-                       Margin="10,0,0,0"
+                       Grid.Column="0"
+                       Grid.ColumnSpan="5"
+                       MaxWidth="420"
+                       HorizontalAlignment="Center"
                        VerticalAlignment="Center"
+                       IsHitTestVisible="False"
                        TextWrapping="NoWrap"
                        TextTrimming="CharacterEllipsis"
                        Style="{StaticResource CaptionTextBlockStyle}"
-                       Text="XCENA Terminal" />
+                       Text="" />
 
             <!-- Layout sits at the far right, next to the caption buttons: the padding on
                  AppTitleBar is widened at run time so it never sits under them. -->
@@ -194,13 +185,26 @@
 
             <!-- Panel: a vertical tab rail on the inner edge, with the selected card beside it -->
             <Grid x:Name="Sidebar" Grid.Column="0" Margin="8,6,4,8">
+                <!--
+                    Which of these two columns holds the rail depends on the dock side, so the
+                    icons always sit on the window edge; the widths are swapped in code with them.
+                -->
                 <Grid ColumnSpacing="2">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition x:Name="SidebarInnerLeft" Width="Auto" />
+                        <ColumnDefinition x:Name="SidebarInnerRight" Width="*" />
                     </Grid.ColumnDefinitions>
 
-                    <StackPanel Grid.Column="0" Spacing="4" VerticalAlignment="Top">
+                    <!--
+                        Stays put when the panel is collapsed: the icons are how it comes back, and
+                        the strip is also the drag handle for docking, so it spans the full height
+                        and paints a transparent background to stay hit-testable.
+                    -->
+                    <Border x:Name="SidebarRail"
+                            Grid.Column="0"
+                            Background="Transparent"
+                            ToolTipService.ToolTip="Click an icon to show or hide the panel · drag left or right to dock">
+                    <StackPanel Spacing="4" VerticalAlignment="Top">
                         <Button x:Name="SessionsTabButton"
                                 Width="34"
                                 Height="36"
@@ -258,8 +262,10 @@
                             </Grid>
                         </Button>
                     </StackPanel>
+                    </Border>
 
-                    <Grid Grid.Column="1">
+                    <!-- The part that hides on collapse; the rail beside it stays. -->
+                    <Grid x:Name="SidebarCards" Grid.Column="1">
 
                 <!--
                     Translation on Z is what gives a ThemeShadow its depth; the value is the
@@ -432,6 +438,8 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
                 <!--
@@ -462,11 +470,37 @@
                            Text="No open sessions" />
 
                 <!--
+                    Shown only while the AI auto-answer is on. An automation that answers prompts
+                    on the user's behalf has to be visible while it is armed.
+                -->
+                <TextBlock x:Name="StatusAutoApprove"
+                           Grid.Column="2"
+                           Margin="0,0,12,0"
+                           VerticalAlignment="Center"
+                           TextWrapping="NoWrap"
+                           TextTrimming="CharacterEllipsis"
+                           MaxWidth="220"
+                           Visibility="Collapsed"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                           Text="auto-yes" />
+
+                <!-- Round trip to the host and how much the session is actually moving. -->
+                <TextBlock x:Name="StatusNetwork"
+                           Grid.Column="3"
+                           Margin="0,0,12,0"
+                           VerticalAlignment="Center"
+                           TextWrapping="NoWrap"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Text="" />
+
+                <!--
                     The font in use, "(auto)" when the app picked it — and the way to change it:
                     the status bar already answers "which font", so it is where the question is asked.
                 -->
                 <Button x:Name="StatusFontButton"
-                        Grid.Column="2"
+                        Grid.Column="4"
                         Height="22"
                         Padding="6,0"
                         Margin="0,0,6,0"
@@ -483,7 +517,7 @@
 
                 <!-- The IME reading: Kor while the Korean IME is composing Hangul, Eng otherwise. -->
                 <Border x:Name="StatusImePill"
-                        Grid.Column="3"
+                        Grid.Column="5"
                         MinWidth="40"
                         Padding="8,1"
                         CornerRadius="4"

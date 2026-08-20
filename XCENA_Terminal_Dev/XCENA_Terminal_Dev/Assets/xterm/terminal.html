@@ -353,15 +353,75 @@
                 return { text: text, columns: columns };
             }
 
+            // ---- answering an AI CLI approval prompt -----------------------------------------
+            // Codex, Claude Code and Gemini CLI all stop on a numbered list whose first entry is
+            // "Yes": option 1 runs the command, option 2 runs it and stops asking, and the last
+            // one refuses. With this on, option 1 is chosen automatically — using the shortcut the
+            // prompt itself advertises, e.g. "(y)", or the digit when it advertises none.
+            var autoApprove = false;
+            var lastApproved = '';
+            var lastApprovedAt = 0;
+
+            var YES_LINE = /^[\s•›>*\-]*([1-9])[.)]\s+(Yes\b.*)$/i;
+            var OPTION_LINE = /^[\s•›>*\-]*[1-9][.)]\s+\S/;
+            var SHORTCUT = /\(([A-Za-z])\)\s*$/;
+
+            function maybeAutoApprove(rows) {
+                if (!autoApprove) {
+                    lastApproved = '';
+                    return;
+                }
+
+                var yes = null;
+                var options = 0;
+
+                for (var i = 0; i < rows.length; i++) {
+                    var text = rows[i].replace(/\s+$/, '');
+                    if (!OPTION_LINE.test(text)) {
+                        continue;
+                    }
+
+                    options++;
+
+                    var match = YES_LINE.exec(text);
+                    if (match && (yes === null || match[1] < yes.digit)) {
+                        yes = { digit: match[1], text: match[2] };
+                    }
+                }
+
+                // A lone "1. Yes" line is prose somewhere; a real prompt also offers a way out.
+                if (yes === null || options < 2) {
+                    lastApproved = '';
+                    return;
+                }
+
+                var signature = yes.digit + ':' + yes.text;
+                var now = Date.now();
+
+                // The prompt stays on screen until the CLI redraws, so the same one must not be
+                // answered twice.
+                if (signature === lastApproved && now - lastApprovedAt < 4000) {
+                    return;
+                }
+
+                lastApproved = signature;
+                lastApprovedAt = now;
+
+                var shortcut = SHORTCUT.exec(yes.text);
+                post('i' + base64FromString(shortcut ? shortcut[1] : yes.digit));
+                post('n' + signature);
+            }
+
             function applyHighlights() {
                 clearDecorations();
 
-                if (highlightRules.length === 0 || !term.element) {
+                if (!term.element || (highlightRules.length === 0 && !autoApprove)) {
                     return;
                 }
 
                 var buffer = term.buffer.active;
                 var anchor = buffer.baseY + buffer.cursorY;
+                var rows = [];
 
                 for (var row = 0; row < term.rows; row++) {
                     var absolute = buffer.viewportY + row;
@@ -371,6 +431,8 @@
                     }
 
                     var scan = readRow(line);
+                    rows.push(scan.text);
+
                     if (scan.text.trim() === '') {
                         continue;
                     }
@@ -393,11 +455,14 @@
                             }
 
                             if (!decorate(absolute - anchor, startX, endX - startX, rule)) {
+                                maybeAutoApprove(rows);
                                 return;   // hit the cap; stop scanning entirely
                             }
                         }
                     }
                 }
+
+                maybeAutoApprove(rows);
             }
 
             function decorate(offset, x, width, rule) {
@@ -616,6 +681,11 @@
                             break;
                         case 'w': // copy-on-select preference, "1" or "0"
                             copyOnSelect = body === '1';
+                            break;
+                        case 'a': // auto-approve AI prompts, "1" or "0"
+                            autoApprove = body === '1';
+                            lastApproved = '';
+                            scheduleHighlight();
                             break;
                         case 'y': // font family, or empty for "pick one that lines Hangul up"
                             applyFontFamily(body);

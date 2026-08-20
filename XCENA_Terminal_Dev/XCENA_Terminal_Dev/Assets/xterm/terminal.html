@@ -15,11 +15,15 @@
             background: #0c0c0c;
         }
 
+        /*
+           The gap around the terminal is an inset, not padding. The fit addon measures this
+           element's computed height and subtracts only the padding of the .xterm child, so padding
+           here would count as usable space: it would ask the PTY for one row more than fits, and
+           the last line — a TUI's status bar, usually — would be clipped at the bottom edge.
+        */
         #term {
             position: absolute;
-            inset: 0;
-            padding: 6px 4px 6px 8px;
-            box-sizing: border-box;
+            inset: 6px 4px 6px 8px;
         }
 
         /* WebView2 renders its own scrollbar chrome; keep xterm's slim and dark. */
@@ -241,6 +245,7 @@
             // Start aligned: the host sends its own choice a moment later, but the first frames
             // are drawn before that arrives.
             applyFontFamily('');
+
 
 
             // ---- keyword highlighting ------------------------------------------------------

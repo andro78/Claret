@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 
@@ -22,11 +23,11 @@ namespace XCENA_Terminal_Dev.Services
         public bool CopyOnSelect { get; set; } = true;
 
         /// <summary>
-        /// Answer "Yes" for an AI CLI that stops to ask whether it may run a command. Off by
-        /// default, and deliberately so: it hands the agent the approval that was the point of the
-        /// prompt. Only the first "Yes" option is ever chosen, never "and do not ask again".
+        /// Hosts where answering an AI prompt automatically is refused outright, whatever the
+        /// session asks for. Kept rather than the opposite list on purpose: the dangerous setting
+        /// is the one that should need repeating, and the safe one the one that should stick.
         /// </summary>
-        public bool AutoApproveAiPrompts { get; set; }
+        public List<string> AutoApproveBlockedHosts { get; set; } = new();
 
         /// <summary>
         /// Where downloads are saved without asking. Empty means "show the save dialog every time",

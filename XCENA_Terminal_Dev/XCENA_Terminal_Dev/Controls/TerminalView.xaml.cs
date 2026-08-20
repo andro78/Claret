@@ -393,7 +393,13 @@ namespace XCENA_Terminal_Dev.Controls
             }
         }
 
-        /// <summary>Whether an AI CLI approval prompt is answered "Yes" without asking the user.</summary>
+        /// <summary>
+        /// Whether an AI CLI approval prompt is answered "Yes" without asking, in this session
+        /// only. Deliberately per session and never persisted: arming it is a decision about the
+        /// task in front of you, not a setting the app should remember on your behalf.
+        /// </summary>
+        public bool AutoApprove => _autoApprove;
+
         public void ApplyAutoApprove(bool enabled)
         {
             _autoApprove = enabled;

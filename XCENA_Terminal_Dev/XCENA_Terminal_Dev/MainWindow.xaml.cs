@@ -134,7 +134,7 @@ namespace XCENA_Terminal_Dev
             };
             _surface.ApplyHighlights(_highlightStore.Rules);
             _surface.ApplyCopyOnSelect(_layoutStore.Current.CopyOnSelect);
-            _surface.ApplyAutoApprove(_layoutStore.Current.AutoApproveAiPrompts);
+            // Nothing to arm at startup: the AI auto-answer is per session and starts off.
             _surface.AutoApproved += OnSurfaceAutoApproved;
 
             _surface.WindowCommandRequested += OnSurfaceWindowCommand;
@@ -986,13 +986,55 @@ namespace XCENA_Terminal_Dev
             AiMenu.Items.Add(new MenuFlyoutSeparator());
 
             // Says what it does in full: this answers a prompt whose whole purpose was to ask.
+            // Per session, because arming it is a decision about the task in front of you.
+            bool blocked = host.Length > 0 && IsAutoApproveBlocked(view!.Profile!.Host);
+
             var auto = new ToggleMenuFlyoutItem
             {
-                Text = "Answer \"Yes, proceed\" automatically",
-                IsChecked = _layoutStore.Current.AutoApproveAiPrompts,
+                Text = "Answer \"Yes, proceed\" automatically — this session",
+                IsChecked = view?.AutoApprove == true,
+                IsEnabled = connected && !blocked,
+                KeyboardAcceleratorTextOverride = blocked ? "blocked on this host" : string.Empty,
             };
             auto.Click += OnAutoApproveClick;
             AiMenu.Items.Add(auto);
+
+            if (view?.Profile is { } target)
+            {
+                var block = new ToggleMenuFlyoutItem
+                {
+                    Text = $"Never auto-answer on {target.Host}",
+                    IsChecked = IsAutoApproveBlocked(target.Host),
+                };
+                block.Click += (_, _) => ToggleAutoApproveBlock(target.Host);
+                AiMenu.Items.Add(block);
+            }
+        }
+
+        private bool IsAutoApproveBlocked(string host) =>
+            _layoutStore.Current.AutoApproveBlockedHosts
+                .Any(entry => string.Equals(entry, host, StringComparison.OrdinalIgnoreCase));
+
+        /// <summary>
+        /// Blocking a host is remembered; it also disarms whatever is already running, because a
+        /// rule that only applies to future sessions would not be a block.
+        /// </summary>
+        private void ToggleAutoApproveBlock(string host)
+        {
+            List<string> blocked = _layoutStore.Current.AutoApproveBlockedHosts;
+
+            if (IsAutoApproveBlocked(host))
+            {
+                blocked.RemoveAll(entry => string.Equals(entry, host, StringComparison.OrdinalIgnoreCase));
+            }
+            else
+            {
+                blocked.Add(host);
+                _surface.DisarmAutoApprove();
+            }
+
+            _layoutStore.Save();
+            UpdateStatusAutoApprove();
         }
 
         /// <summary>
@@ -1001,14 +1043,18 @@ namespace XCENA_Terminal_Dev
         /// </summary>
         private void OnAutoApproveClick(object sender, RoutedEventArgs e)
         {
-            if (sender is not ToggleMenuFlyoutItem item)
+            if (sender is not ToggleMenuFlyoutItem item || _surface.ActiveView is not { } view)
             {
                 return;
             }
 
-            _layoutStore.Current.AutoApproveAiPrompts = item.IsChecked;
-            _layoutStore.Save();
-            _surface.ApplyAutoApprove(item.IsChecked);
+            // A blocked host wins over the switch, whichever way it was just flipped.
+            bool arm = item.IsChecked
+                && view.Profile is { } profile
+                && !IsAutoApproveBlocked(profile.Host);
+
+            view.ApplyAutoApprove(arm);
+            _lastAutoApproved = string.Empty;
             UpdateStatusAutoApprove();
         }
 
@@ -1026,13 +1072,16 @@ namespace XCENA_Terminal_Dev
             UpdateStatusAutoApprove();
         }
 
-        /// <summary>The status bar carries the state: an automation this quiet needs to be visible.</summary>
+        /// <summary>
+        /// The status bar carries the state of the session in front of you: an automation this
+        /// quiet has to be visible, and it is now per session, so the readout follows the tab.
+        /// </summary>
         private void UpdateStatusAutoApprove()
         {
-            bool on = _layoutStore.Current.AutoApproveAiPrompts;
+            bool on = _surface.ActiveView?.AutoApprove == true;
 
             StatusAutoApprove.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
-            StatusAutoApprove.Text = _lastAutoApproved.Length > 0
+            StatusAutoApprove.Text = on && _lastAutoApproved.Length > 0
                 ? $"auto-yes · {_lastAutoApproved}"
                 : "auto-yes";
         }

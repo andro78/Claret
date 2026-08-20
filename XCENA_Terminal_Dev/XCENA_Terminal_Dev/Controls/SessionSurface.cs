@@ -33,7 +33,6 @@ namespace XCENA_Terminal_Dev.Controls
         private TerminalAppearance? _appearance;
         private List<HighlightRule>? _highlights;
         private bool _copyOnSelect = true;
-        private bool _autoApprove;
         private bool _pruneQueued;
 
         public SessionSurface()
@@ -117,7 +116,6 @@ namespace XCENA_Terminal_Dev.Controls
             }
 
             view.ApplyCopyOnSelect(_copyOnSelect);
-            view.ApplyAutoApprove(_autoApprove);
 
             SetActive(leaf, notify: false);
             RefreshChrome();
@@ -219,16 +217,17 @@ namespace XCENA_Terminal_Dev.Controls
             }
         }
 
-        /// <summary>Pushes the AI auto-approve preference to every terminal, and to any opened later.</summary>
-        public void ApplyAutoApprove(bool enabled)
+        /// <summary>
+        /// Turns the AI auto-answer off in every session. Arming it is per session and done on the
+        /// view itself; only the withdrawal is global, so a blocked host can be enforced at once.
+        /// </summary>
+        public void DisarmAutoApprove()
         {
-            _autoApprove = enabled;
-
             foreach (PaneLeafNode leaf in Leaves())
             {
                 foreach (TerminalView view in leaf.Group.Sessions)
                 {
-                    view.ApplyAutoApprove(enabled);
+                    view.ApplyAutoApprove(false);
                 }
             }
         }

@@ -19,12 +19,12 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <!-- Drag region for the extended title bar -->
-        <Grid x:Name="AppTitleBar" Grid.Row="0" Height="40" Padding="12,0,0,0">
+        <Grid x:Name="AppTitleBar" Grid.Row="0" Height="40" Padding="12,0,144,0">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
@@ -32,53 +32,36 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <Button x:Name="ToggleSidebarButton"
-                    Grid.Column="0"
-                    Width="34"
-                    Height="30"
-                    Padding="0"
-                    Background="Transparent"
-                    BorderThickness="0"
-                    ToolTipService.ToolTip="Profiles (Ctrl+Shift+B)"
-                    Click="OnToggleSidebarClick">
-                <FontIcon Glyph="&#xE700;" FontSize="14" />
-            </Button>
-
-            <DropDownButton x:Name="LayoutButton"
-                            Grid.Column="1"
+            <DropDownButton x:Name="PanelButton"
+                            Grid.Column="0"
                             Height="30"
                             Padding="8,0"
                             Margin="4,0,0,0"
                             Background="Transparent"
                             BorderThickness="0"
-                            ToolTipService.ToolTip="Layout">
-                <TextBlock x:Name="LayoutLabel"
-                           Text="Single pane (merge all)"
-                           VerticalAlignment="Center"
-                           Style="{StaticResource CaptionTextBlockStyle}" />
+                            ToolTipService.ToolTip="Panel (Ctrl+Shift+B)">
+                <FontIcon Glyph="&#xE700;" FontSize="14" />
                 <DropDownButton.Flyout>
                     <MenuFlyout Placement="Bottom">
-                        <RadioMenuFlyoutItem x:Name="LayoutSingleItem"
-                                             Text="Single pane (merge all)"
-                                             GroupName="surfaceLayout"
-                                             IsChecked="True"
-                                             Click="OnLayoutSingleClick" />
-                        <RadioMenuFlyoutItem x:Name="LayoutSideItem"
-                                             Text="Spread all sessions left to right"
-                                             GroupName="surfaceLayout"
-                                             KeyboardAcceleratorTextOverride="Alt+Shift++"
-                                             Click="OnLayoutSideClick" />
-                        <RadioMenuFlyoutItem x:Name="LayoutStackItem"
-                                             Text="Spread all sessions top to bottom"
-                                             GroupName="surfaceLayout"
-                                             KeyboardAcceleratorTextOverride="Alt+Shift+-"
-                                             Click="OnLayoutStackClick" />
+                        <ToggleMenuFlyoutItem x:Name="PanelShowItem"
+                                              Text="Show panel"
+                                              KeyboardAcceleratorTextOverride="Ctrl+Shift+B"
+                                              Click="OnToggleSidebarClick" />
+                        <MenuFlyoutSeparator />
+                        <RadioMenuFlyoutItem x:Name="PanelDockLeftItem"
+                                             Text="Dock left"
+                                             GroupName="panelDock"
+                                             Click="OnDockLeftClick" />
+                        <RadioMenuFlyoutItem x:Name="PanelDockRightItem"
+                                             Text="Dock right"
+                                             GroupName="panelDock"
+                                             Click="OnDockRightClick" />
                     </MenuFlyout>
                 </DropDownButton.Flyout>
             </DropDownButton>
 
             <Button x:Name="AppearanceButton"
-                    Grid.Column="2"
+                    Grid.Column="1"
                     Width="34"
                     Height="30"
                     Padding="0"
@@ -91,7 +74,7 @@
             </Button>
 
             <DropDownButton x:Name="OptionsButton"
-                            Grid.Column="3"
+                            Grid.Column="2"
                             Height="30"
                             Padding="8,0"
                             Margin="2,0,0,0"
@@ -104,6 +87,18 @@
                 <DropDownButton.Flyout>
                     <!-- Opening syncs the check mark and greys out what the tree cannot do yet. -->
                     <MenuFlyout Placement="Bottom" Opening="OnOptionsOpening">
+                                <MenuFlyoutItem x:Name="FontItem"
+                                        Text="Terminal font…"
+                                        Click="OnFontClick">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE8D2;" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                        <!-- Mouse selection straight to the clipboard; paste is middle-click or Ctrl+V. -->
+                        <ToggleMenuFlyoutItem x:Name="CopyOnSelectItem"
+                                              Text="Copy on selection"
+                                              Click="OnCopyOnSelectClick" />
+                        <MenuFlyoutSeparator />
                         <MenuFlyoutSubItem x:Name="SftpMenu" Text="SFTP">
                             <MenuFlyoutSubItem.Icon>
                                 <FontIcon Glyph="&#xE8B7;" />
@@ -151,12 +146,50 @@
                 </DropDownButton.Flyout>
             </DropDownButton>
 
+            <!-- The title is what gives way when the bar runs out of room, not the buttons. -->
             <TextBlock x:Name="AppTitleText"
-                       Grid.Column="4"
+                       Grid.Column="3"
                        Margin="10,0,0,0"
                        VerticalAlignment="Center"
+                       TextWrapping="NoWrap"
+                       TextTrimming="CharacterEllipsis"
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Text="XCENA Terminal" />
+
+            <!-- Layout sits at the far right, next to the caption buttons: the padding on
+                 AppTitleBar is widened at run time so it never sits under them. -->
+            <DropDownButton x:Name="LayoutButton"
+                            Grid.Column="4"
+                            Height="30"
+                            Padding="8,0"
+                            Margin="8,0,0,0"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            ToolTipService.ToolTip="Layout">
+                <TextBlock x:Name="LayoutLabel"
+                           Text="Single pane (merge all)"
+                           VerticalAlignment="Center"
+                           Style="{StaticResource CaptionTextBlockStyle}" />
+                <DropDownButton.Flyout>
+                    <MenuFlyout Placement="Bottom">
+                        <RadioMenuFlyoutItem x:Name="LayoutSingleItem"
+                                             Text="Single pane (merge all)"
+                                             GroupName="surfaceLayout"
+                                             IsChecked="True"
+                                             Click="OnLayoutSingleClick" />
+                        <RadioMenuFlyoutItem x:Name="LayoutSideItem"
+                                             Text="Spread all sessions left to right"
+                                             GroupName="surfaceLayout"
+                                             KeyboardAcceleratorTextOverride="Alt+Shift++"
+                                             Click="OnLayoutSideClick" />
+                        <RadioMenuFlyoutItem x:Name="LayoutStackItem"
+                                             Text="Spread all sessions top to bottom"
+                                             GroupName="surfaceLayout"
+                                             KeyboardAcceleratorTextOverride="Alt+Shift+-"
+                                             Click="OnLayoutStackClick" />
+                    </MenuFlyout>
+                </DropDownButton.Flyout>
+            </DropDownButton>
         </Grid>
 
         <Grid x:Name="BodyGrid" Grid.Row="1">
@@ -166,41 +199,9 @@
                 <ColumnDefinition x:Name="RightColumn" Width="*" />
             </Grid.ColumnDefinitions>
 
-            <!-- Saved profiles -->
-            <Grid x:Name="Sidebar" Grid.Column="0" Margin="8,0,4,8">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
-
-                <!-- Drag handle: press here and drag to dock the sidebar on the other side. -->
-                <Border x:Name="SidebarHeader"
-                        Grid.Row="0"
-                        Margin="0,0,0,6"
-                        Padding="8,4"
-                        CornerRadius="6"
-                        Background="Transparent">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <FontIcon Glyph="&#xE700;"
-                                  FontSize="12"
-                                  Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}"
-                                   Text="Saved connections" />
-                    </StackPanel>
-                    <Border.ContextFlyout>
-                        <MenuFlyout>
-                            <MenuFlyoutItem Text="Dock left" Click="OnDockLeftClick" />
-                            <MenuFlyoutItem Text="Dock right" Click="OnDockRightClick" />
-                            <MenuFlyoutSeparator />
-                            <MenuFlyoutItem Text="Hide panel"
-                                            KeyboardAcceleratorTextOverride="Ctrl+Shift+B"
-                                            Click="OnToggleSidebarClick" />
-                        </MenuFlyout>
-                    </Border.ContextFlyout>
-                </Border>
-
-                <!-- Vertical tab rail down the inner edge, with the cards beside it -->
-                <Grid Grid.Row="1" ColumnSpacing="2">
+            <!-- Panel: a vertical tab rail on the inner edge, with the selected card beside it -->
+            <Grid x:Name="Sidebar" Grid.Column="0" Margin="8,6,4,8">
+                <Grid ColumnSpacing="2">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
@@ -242,6 +243,25 @@
                                         HorizontalAlignment="Left"
                                         VerticalAlignment="Center" />
                                 <FontIcon x:Name="FilesTabIcon" Glyph="&#xE8B7;" FontSize="16" />
+                            </Grid>
+                        </Button>
+
+                        <Button x:Name="ToolsTabButton"
+                                Width="34"
+                                Height="36"
+                                Padding="0"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                ToolTipService.ToolTip="Tools"
+                                Click="OnToolsTabClick">
+                            <Grid Width="34" Height="36">
+                                <Border x:Name="ToolsTabMarker"
+                                        Width="3"
+                                        Height="18"
+                                        CornerRadius="2"
+                                        HorizontalAlignment="Left"
+                                        VerticalAlignment="Center" />
+                                <FontIcon x:Name="ToolsTabIcon" Glyph="&#xE90F;" FontSize="16" />
                             </Grid>
                         </Button>
                     </StackPanel>
@@ -341,6 +361,16 @@
                     <local2:RemoteFilesView x:Name="Files" />
                 </Border>
 
+                <Border x:Name="ToolsCard"
+                        Padding="2"
+                        Visibility="Collapsed"
+                        Background="{ThemeResource LayerFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                    <local2:HighlightRulesView x:Name="Tools" />
+                </Border>
+
                     </Grid>
                 </Grid>
 
@@ -380,5 +410,52 @@
                 </StackPanel>
             </Grid>
         </Grid>
+
+        <!-- Status bar: what is connected on the left, what the keyboard will type on the right. -->
+        <Border Grid.Row="2"
+                Height="26"
+                Padding="12,0"
+                BorderThickness="0,1,0,0"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock x:Name="StatusSession"
+                           Grid.Column="0"
+                           VerticalAlignment="Center"
+                           TextWrapping="NoWrap"
+                           TextTrimming="CharacterEllipsis"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Text="No open sessions" />
+
+                <!-- The font actually in use; "(auto)" when the app picked it. -->
+                <TextBlock x:Name="StatusFont"
+                           Grid.Column="1"
+                           Margin="0,0,10,0"
+                           VerticalAlignment="Center"
+                           TextWrapping="NoWrap"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Text="" />
+
+                <!-- The IME reading: Kor while the Korean IME is composing Hangul, Eng otherwise. -->
+                <Border x:Name="StatusImePill"
+                        Grid.Column="2"
+                        MinWidth="40"
+                        Padding="8,1"
+                        CornerRadius="4"
+                        VerticalAlignment="Center">
+                    <TextBlock x:Name="StatusIme"
+                               HorizontalAlignment="Center"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Text="Eng" />
+                </Border>
+            </Grid>
+        </Border>
     </Grid>
 </Window>

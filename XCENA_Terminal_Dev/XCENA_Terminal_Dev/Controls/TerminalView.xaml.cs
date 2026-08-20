@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -80,6 +81,7 @@ namespace XCENA_Terminal_Dev.Controls
         private CancellationTokenSource? _connectCts;
 
         private TerminalAppearance? _appearance;
+        private List<HighlightRule>? _highlights;
         private DispatcherQueueTimer? _retryTimer;
         private int _retrySecondsLeft;
         private int _retryAttempt;
@@ -93,6 +95,7 @@ namespace XCENA_Terminal_Dev.Controls
         private uint _columns = 80;
         private uint _rows = 24;
         private int _fontSize = 14;
+        private bool _copyOnSelect = true;
 
         public TerminalView()
         {
@@ -124,10 +127,16 @@ namespace XCENA_Terminal_Dev.Controls
         /// <summary>Raised whenever <see cref="State"/> changes.</summary>
         public event EventHandler<TerminalState>? StateChanged;
 
+        /// <summary>Raised once the remote platform is known, so the tab can show its icon.</summary>
+        public event EventHandler<RemotePlatform>? PlatformDetected;
+
         /// <summary>Raised when the user presses a window-level chord inside the terminal.</summary>
         public event EventHandler<TerminalCommand>? CommandRequested;
 
         public TerminalState State { get; private set; } = TerminalState.Idle;
+
+        /// <summary>What the far end runs, once known. <see cref="RemotePlatform.Unknown"/> until then.</summary>
+        public RemotePlatform Platform { get; private set; } = RemotePlatform.Unknown;
 
         public ConnectionProfile? Profile => _profile;
 
@@ -215,6 +224,38 @@ namespace XCENA_Terminal_Dev.Controls
             // The PTY was created with the pre-layout grid size; re-assert the real one.
             session.Resize(_columns, _rows);
             FocusTerminal();
+
+            // Deliberately not awaited: the probe runs on its own channel and only decides an icon,
+            // so the session must not wait on it.
+            _ = IdentifyPlatformAsync(session);
+        }
+
+        /// <summary>
+        /// Asks the session what it is talking to and publishes the answer. Silent on failure —
+        /// the tab simply keeps the generic icon.
+        /// </summary>
+        private async Task IdentifyPlatformAsync(SshSession session)
+        {
+            CancellationToken token = _connectCts?.Token ?? CancellationToken.None;
+
+            RemotePlatform platform;
+            try
+            {
+                platform = await session.DetectPlatformAsync(token).ConfigureAwait(true);
+            }
+            catch (Exception)
+            {
+                return;
+            }
+
+            // A reconnect or a close may have replaced the session while the probe was in flight.
+            if (!ReferenceEquals(_session, session) || !platform.IsKnown)
+            {
+                return;
+            }
+
+            Platform = platform;
+            PlatformDetected?.Invoke(this, platform);
         }
 
         public void Disconnect()
@@ -264,6 +305,35 @@ namespace XCENA_Terminal_Dev.Controls
             PostAppearance();
         }
 
+        /// <summary>
+        /// Replaces the "colour this text" rules. Matching happens in the page, so nothing is
+        /// injected into the shell's byte stream and a TUI's own colours are left alone.
+        /// </summary>
+        public void ApplyHighlights(IReadOnlyList<HighlightRule> rules)
+        {
+            _highlights = rules.Where(rule => rule.IsUsable).Select(rule => rule.Clone()).ToList();
+            PostHighlights();
+        }
+
+        private void PostHighlights()
+        {
+            if (_highlights is null || !_webViewReady)
+            {
+                return;
+            }
+
+            // Only the fields the page needs; Enabled has already been applied by filtering.
+            string json = JsonSerializer.Serialize(_highlights.Select(rule => new Dictionary<string, object>
+            {
+                ["pattern"] = rule.Pattern,
+                ["textOnly"] = rule.TextOnly,
+                ["ignoreCase"] = rule.IgnoreCase,
+                ["color"] = rule.EffectiveColor,
+            }));
+
+            Post("g" + json);
+        }
+
         private void PostAppearance()
         {
             if (_appearance is null || !_webViewReady)
@@ -271,15 +341,48 @@ namespace XCENA_Terminal_Dev.Controls
                 return;
             }
 
-            string json = JsonSerializer.Serialize(new Dictionary<string, string>
+            var theme = new Dictionary<string, string>
             {
                 ["background"] = _appearance.Background,
                 ["foreground"] = _appearance.Foreground,
                 ["cursor"] = _appearance.Cursor,
+                // The block cursor draws the glyph under it in this colour, so it follows the
+                // background or the character vanishes on a light scheme.
+                ["cursorAccent"] = _appearance.Background,
                 ["selectionBackground"] = _appearance.Selection,
-            });
+            };
 
-            Post("h" + json);
+            // The sixteen ANSI slots the shell paints with; the page merges whatever it is sent.
+            IReadOnlyList<string> ansi = _appearance.AnsiColors;
+            for (int i = 0; i < TerminalScheme.AnsiNames.Length && i < ansi.Count; i++)
+            {
+                theme[TerminalScheme.AnsiNames[i]] = ansi[i];
+            }
+
+            Post("h" + JsonSerializer.Serialize(theme));
+
+            // Empty means "choose one that lines Hangul up with two cells"; the page decides,
+            // because only it can measure what is actually installed.
+            Post("y" + _appearance.FontFamily);
+
+            // Ctrl+/- still adjusts this session afterwards; the stored size is the starting point.
+            _fontSize = _appearance.SafeFontSize;
+            Post("s" + _fontSize.ToString());
+        }
+
+        /// <summary>Whether a mouse selection goes straight to the clipboard.</summary>
+        public void ApplyCopyOnSelect(bool enabled)
+        {
+            _copyOnSelect = enabled;
+            PostCopyOnSelect();
+        }
+
+        private void PostCopyOnSelect()
+        {
+            if (_webViewReady)
+            {
+                Post(_copyOnSelect ? "w1" : "w0");
+            }
         }
 
         public void ChangeFontSize(int delta)
@@ -357,6 +460,8 @@ namespace XCENA_Terminal_Dev.Controls
 
             _webViewReady = true;
             PostAppearance();
+            PostHighlights();
+            PostCopyOnSelect();
         }
 
         private void OnWebMessageReceived(CoreWebView2 sender, CoreWebView2WebMessageReceivedEventArgs args)
@@ -575,6 +680,7 @@ namespace XCENA_Terminal_Dev.Controls
 
         private const string DimStart = "\u001b[90m";
         private const string DimEnd = "\u001b[0m";
+
 
         private void OnSessionNotice(object? sender, string notice)
         {

@@ -31,6 +31,8 @@ namespace XCENA_Terminal_Dev.Controls
         private PaneNode? _root;
         private PaneLeafNode? _active;
         private TerminalAppearance? _appearance;
+        private List<HighlightRule>? _highlights;
+        private bool _copyOnSelect = true;
         private bool _pruneQueued;
 
         public SessionSurface()
@@ -89,6 +91,7 @@ namespace XCENA_Terminal_Dev.Controls
             view.CommandRequested += OnPaneCommand;
             view.StateChanged += OnSessionStateChanged;
             view.TitleChanged += OnSessionTitleChanged;
+            view.PlatformDetected += OnSessionPlatformDetected;
 
             var tab = new TabViewItem
             {
@@ -105,6 +108,13 @@ namespace XCENA_Terminal_Dev.Controls
             {
                 view.ApplyAppearance(_appearance);
             }
+
+            if (_highlights is not null)
+            {
+                view.ApplyHighlights(_highlights);
+            }
+
+            view.ApplyCopyOnSelect(_copyOnSelect);
 
             SetActive(leaf, notify: false);
             RefreshChrome();
@@ -131,6 +141,7 @@ namespace XCENA_Terminal_Dev.Controls
             view.CommandRequested -= OnPaneCommand;
             view.StateChanged -= OnSessionStateChanged;
             view.TitleChanged -= OnSessionTitleChanged;
+            view.PlatformDetected -= OnSessionPlatformDetected;
 
             TabViewItem? tab = leaf.Group.Detach(view);
             if (tab is not null)
@@ -186,6 +197,34 @@ namespace XCENA_Terminal_Dev.Controls
                 foreach (TerminalView view in leaf.Group.Sessions)
                 {
                     view.ApplyAppearance(_appearance);
+                }
+            }
+        }
+
+        /// <summary>Pushes the copy-on-select preference to every terminal, and to any opened later.</summary>
+        public void ApplyCopyOnSelect(bool enabled)
+        {
+            _copyOnSelect = enabled;
+
+            foreach (PaneLeafNode leaf in Leaves())
+            {
+                foreach (TerminalView view in leaf.Group.Sessions)
+                {
+                    view.ApplyCopyOnSelect(enabled);
+                }
+            }
+        }
+
+        /// <summary>Pushes the highlight rules to every open terminal, and to any opened later.</summary>
+        public void ApplyHighlights(IReadOnlyList<HighlightRule> rules)
+        {
+            _highlights = rules.Select(rule => rule.Clone()).ToList();
+
+            foreach (PaneLeafNode leaf in Leaves())
+            {
+                foreach (TerminalView view in leaf.Group.Sessions)
+                {
+                    view.ApplyHighlights(_highlights);
                 }
             }
         }
@@ -675,18 +714,43 @@ namespace XCENA_Terminal_Dev.Controls
                         continue;
                     }
 
-                    tab.IconSource = new SymbolIconSource
+                    // Connected tabs show what the far end runs, when we managed to work it out;
+                    // every other state is about the connection itself, so it keeps its own icon.
+                    tab.IconSource = view.State switch
                     {
-                        Symbol = view.State switch
-                        {
-                            TerminalState.Connecting => Symbol.Sync,
-                            TerminalState.Reconnecting => Symbol.Refresh,
-                            TerminalState.Connected => Symbol.Globe,
-                            _ => Symbol.Cancel,
-                        },
+                        TerminalState.Connected =>
+                            PlatformIcon.For(view.Platform.Os) ?? Symbolic(Symbol.Globe),
+                        TerminalState.Connecting => Symbolic(Symbol.Sync),
+                        TerminalState.Reconnecting => Symbolic(Symbol.Refresh),
+                        _ => Symbolic(Symbol.Cancel),
                     };
                 }
             }
+        }
+
+        private static SymbolIconSource Symbolic(Symbol symbol) => new() { Symbol = symbol };
+
+        /// <summary>
+        /// The platform arrived after the tab was built, so redraw the icon and say what it is in
+        /// the tooltip next to the endpoint.
+        /// </summary>
+        private void OnSessionPlatformDetected(object? sender, RemotePlatform platform)
+        {
+            if (sender is not TerminalView view)
+            {
+                return;
+            }
+
+            if (LeafOf(view)?.Group.FindTab(view) is { } tab && view.Profile is { } profile)
+            {
+                string label = platform.Name.Length > 0
+                    ? platform.Name
+                    : RemotePlatform.Describe(platform.Os);
+
+                ToolTipService.SetToolTip(tab, $"{profile.Endpoint}\n{label}");
+            }
+
+            RefreshChrome();
         }
 
         // ---------- moving tabs between panes ----------

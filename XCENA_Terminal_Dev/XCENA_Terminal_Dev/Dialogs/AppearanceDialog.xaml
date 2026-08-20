@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <ContentDialog
     x:Class="XCENA_Terminal_Dev.Dialogs.AppearanceDialog"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -15,38 +15,74 @@
 
     <StackPanel Spacing="12" Width="420">
 
-        <controls:RadioButtons x:Name="TargetButtons"
-                               Header="Editing"
-                               MaxColumns="2"
-                               SelectionChanged="OnTargetChanged">
-            <RadioButton Content="Background" />
-            <RadioButton Content="Text" />
-        </controls:RadioButtons>
+        <!-- A preset sets the background, the text colour and all sixteen ANSI colours at once. -->
+        <ComboBox x:Name="SchemeBox"
+                  Header="Scheme"
+                  HorizontalAlignment="Stretch"
+                  SelectionChanged="OnSchemeChanged" />
 
-        <ColorPicker x:Name="Picker"
-                     IsAlphaEnabled="False"
-                     IsAlphaSliderVisible="False"
-                     IsAlphaTextInputVisible="False"
-                     IsHexInputVisible="True"
-                     ColorSpectrumShape="Box"
-                     ColorChanged="OnColorChanged" />
+        <!--
+            Font matters for Hangul: only a face that advances one syllable across two Latin
+            cells keeps CJK columns aligned, so the list is ordered by that and the note says
+            what each one is.
+        -->
+        <ComboBox x:Name="FontBox"
+                  Header="Font"
+                  HorizontalAlignment="Stretch"
+                  SelectionChanged="OnFontChanged" />
 
+        <!-- Preview sits above the picker: it is what you look at while trying schemes. -->
         <TextBlock Text="Preview" Style="{StaticResource CaptionTextBlockStyle}" />
         <Border x:Name="PreviewBorder"
                 CornerRadius="6"
                 BorderThickness="1"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 Padding="12">
-            <StackPanel>
-                <TextBlock x:Name="PreviewLine1"
-                           FontFamily="Cascadia Mono, Consolas, monospace"
-                           FontSize="13"
-                           Text="root@server:~# ls -al /var/log" />
-                <TextBlock x:Name="PreviewLine2"
-                           FontFamily="Cascadia Mono, Consolas, monospace"
-                           FontSize="13"
-                           Text="CJK sample: 가나다라마 · wide-cell check" />
+            <StackPanel Spacing="6">
+                <!--
+                    Runs carry the ANSI colours: a prompt and a log line are where a shell actually
+                    shows them, so the preview says more than a row of swatches on its own.
+                -->
+                <TextBlock x:Name="PromptLine" FontSize="13">
+                    <Run x:Name="PromptUser" Text="root@server" /><Run x:Name="PromptPunct1" Text=":" /><Run x:Name="PromptPath" Text="~/var/log" /><Run x:Name="PromptPunct2" Text="# ls -al" />
+                </TextBlock>
+                <TextBlock x:Name="LogLine" FontSize="13">
+                    <Run x:Name="LogOk" Text="OK" /><Run x:Name="LogGap1" Text="  " /><Run x:Name="LogWarn" Text="WARN" /><Run x:Name="LogGap2" Text="  " /><Run x:Name="LogError" Text="ERROR" /><Run x:Name="LogGap3" Text="  " /><Run x:Name="LogInfo" Text="link up" />
+                </TextBlock>
+                <!--
+                    Five Hangul syllables over ten digits: the two bars line up only when the
+                    font gives each syllable exactly two cells, which is the whole question.
+                -->
+                <TextBlock x:Name="HangulLine" FontSize="13" Text="가나다라마|" />
+                <TextBlock x:Name="RulerLine" FontSize="13" Text="1234567890|" />
+
+                <!-- The full palette, so the eight dim and eight bright slots can be compared. -->
+                <StackPanel x:Name="SwatchRow" Orientation="Horizontal" Spacing="3" Margin="0,2,0,0" />
             </StackPanel>
         </Border>
+
+        <!-- Hand-tuning is the exception now that there are schemes, so it folds away. -->
+        <Expander x:Name="CustomExpander"
+                  HorizontalAlignment="Stretch"
+                  HorizontalContentAlignment="Stretch"
+                  Header="Adjust background and text by hand">
+            <StackPanel Spacing="12">
+                <controls:RadioButtons x:Name="TargetButtons"
+                                       Header="Editing"
+                                       MaxColumns="2"
+                                       SelectionChanged="OnTargetChanged">
+                    <RadioButton Content="Background" />
+                    <RadioButton Content="Text" />
+                </controls:RadioButtons>
+
+                <ColorPicker x:Name="Picker"
+                             IsAlphaEnabled="False"
+                             IsAlphaSliderVisible="False"
+                             IsAlphaTextInputVisible="False"
+                             IsHexInputVisible="True"
+                             ColorSpectrumShape="Box"
+                             ColorChanged="OnColorChanged" />
+            </StackPanel>
+        </Expander>
     </StackPanel>
 </ContentDialog>

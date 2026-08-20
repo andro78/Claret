@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.UI.Windowing;
@@ -19,6 +20,14 @@ using XCENA_Terminal_Dev.Services;
 
 namespace XCENA_Terminal_Dev
 {
+    /// <summary>Which card the sidebar rail is showing.</summary>
+    internal enum SidebarTab
+    {
+        Sessions,
+        Files,
+        Tools,
+    }
+
     /// <summary>
     /// Shell of the app: a saved-profile sidebar and a <see cref="SessionSurface"/>. The surface
     /// owns every terminal; each of its panes carries its own tab strip, so the window itself has
@@ -30,12 +39,13 @@ namespace XCENA_Terminal_Dev
         private readonly RecentStore _recentStore = new();
         private readonly AppearanceStore _appearanceStore = new();
         private readonly LayoutStore _layoutStore = new();
+        private readonly HighlightStore _highlightStore = new();
         private readonly SessionSurface _surface = new();
         private readonly IntPtr _windowHandle;
 
         private SidebarSplitter? _sidebarSplitter;
-        private Border? _dockHint;
-        private bool _draggingSidebar;
+        private Microsoft.UI.Dispatching.DispatcherQueueTimer? _imeTimer;
+        private ImeMode _imeMode = ImeMode.Unavailable;
 
         private bool _sidebarVisible = true;
         private bool _dialogOpen;
@@ -46,6 +56,7 @@ namespace XCENA_Terminal_Dev
             _recentStore.Load();
             _appearanceStore.Load();
             _layoutStore.Load();
+            _highlightStore.Load();
 
             InitializeComponent();
 
@@ -53,6 +64,21 @@ namespace XCENA_Terminal_Dev
 
             ExtendsContentIntoTitleBar = true;
             SetTitleBar(AppTitleBar);
+
+            // The caption buttons overlay the right edge, so pad the bar to keep Panel clear of them.
+            AppTitleBar.SizeChanged += (_, _) => ApplyTitleBarInset();
+            ApplyTitleBarInset();
+
+            // The title bar is custom, so the taskbar button is the only place the icon shows.
+            // An unpackaged window does not pick up the exe icon on its own.
+            try
+            {
+                AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
+            }
+            catch (Exception)
+            {
+                // A missing icon is not worth failing startup over; Windows falls back to the default.
+            }
 
             AppWindow.Resize(new SizeInt32(1180, 760));
             if (AppWindow.Title.Length == 0)
@@ -69,6 +95,15 @@ namespace XCENA_Terminal_Dev
             _ = Files.SetShowFilesAsync(_layoutStore.Current.ShowRemoteFiles);
             _surface.SessionClosing += (_, view) => Files.Forget(view);
             Files.CommandRequested += (_, command) => _surface.ActiveView?.SendInput(command + "\n");
+            Tools.Initialize(_highlightStore.Rules);
+            Tools.RulesChanged += (_, _) =>
+            {
+                _highlightStore.Save();
+                _surface.ApplyHighlights(_highlightStore.Rules);
+            };
+            _surface.ApplyHighlights(_highlightStore.Rules);
+            _surface.ApplyCopyOnSelect(_layoutStore.Current.CopyOnSelect);
+
             _surface.WindowCommandRequested += OnSurfaceWindowCommand;
             _surface.NewSessionRequested += (_, _) => ShowNewSessionMenu(_surface.ActiveAddAnchor);
             _surface.DuplicateRequested += (_, view) => DuplicateSession(view);
@@ -80,7 +115,8 @@ namespace XCENA_Terminal_Dev
             };
 
             SetUpSidebar();
-            SelectSidebarTab(files: false);
+            SetUpStatusBar();
+            SelectSidebarTab(SidebarTab.Sessions);
             RegisterAccelerators();
             UpdateProfileEmptyState();
             UpdateEmptyState();
@@ -96,6 +132,28 @@ namespace XCENA_Terminal_Dev
         }
 
         public ObservableCollection<ConnectionProfile> Profiles => _profileStore.Profiles;
+
+        /// <summary>
+        /// Keeps the right-hand title bar controls clear of the system caption buttons, which
+        /// overlay the extended title bar. RightInset is physical pixels, so it needs scaling down.
+        /// </summary>
+        private void ApplyTitleBarInset()
+        {
+            double scale = AppTitleBar.XamlRoot?.RasterizationScale ?? 1.0;
+            double inset = scale > 0 ? AppWindow.TitleBar.RightInset / scale : 0;
+
+            // Zero means the platform has not reported the buttons yet; the fallback covers all three.
+            if (inset <= 0)
+            {
+                inset = 144;
+            }
+
+            var padding = new Thickness(12, 0, inset + 4, 0);
+            if (!padding.Equals(AppTitleBar.Padding))
+            {
+                AppTitleBar.Padding = padding;
+            }
+        }
 
         private void RegisterAccelerators()
         {
@@ -136,7 +194,7 @@ namespace XCENA_Terminal_Dev
             ApplySidebarLayout();
         }
 
-        /// <summary>Builds the resize divider and wires the header as a dock-drag handle.</summary>
+        /// <summary>Builds the resize divider between the panel and the sessions.</summary>
         private void SetUpSidebar()
         {
             _sidebarSplitter = new SidebarSplitter(
@@ -150,12 +208,6 @@ namespace XCENA_Terminal_Dev
 
             Grid.SetColumn(_sidebarSplitter, 1);
             BodyGrid.Children.Add(_sidebarSplitter);
-
-            SidebarHeader.PointerPressed += OnSidebarHeaderPressed;
-            SidebarHeader.PointerMoved += OnSidebarHeaderMoved;
-            SidebarHeader.PointerReleased += OnSidebarHeaderReleased;
-            SidebarHeader.PointerCaptureLost += (_, _) => EndSidebarDrag(dock: false);
-            ToolTipService.SetToolTip(SidebarHeader, "Drag to dock left or right");
 
             ApplySidebarLayout();
         }
@@ -174,7 +226,7 @@ namespace XCENA_Terminal_Dev
 
             Grid.SetColumn(Sidebar, onRight ? 2 : 0);
             Grid.SetColumn(SessionArea, onRight ? 0 : 2);
-            Sidebar.Margin = onRight ? new Thickness(4, 0, 8, 8) : new Thickness(8, 0, 4, 8);
+            Sidebar.Margin = onRight ? new Thickness(4, 6, 8, 8) : new Thickness(8, 6, 4, 8);
 
             Sidebar.Visibility = _sidebarVisible ? Visibility.Visible : Visibility.Collapsed;
 
@@ -186,6 +238,10 @@ namespace XCENA_Terminal_Dev
             SplitterColumn.Width = new GridLength(_sidebarVisible ? SidebarSplitter.Thickness : 0);
             SidebarColumn.Width = new GridLength(_sidebarVisible ? width : 0);
             SessionColumn.Width = new GridLength(1, GridUnitType.Star);
+
+            PanelShowItem.IsChecked = _sidebarVisible;
+            PanelDockLeftItem.IsChecked = !onRight;
+            PanelDockRightItem.IsChecked = onRight;
         }
 
         private void OnDockLeftClick(object sender, RoutedEventArgs e) => DockSidebar(onRight: false);
@@ -203,80 +259,6 @@ namespace XCENA_Terminal_Dev
             _layoutStore.Save();
             _sidebarVisible = true;
             ApplySidebarLayout();
-        }
-
-        // ---------- dragging the sidebar to the other side ----------
-
-        private void OnSidebarHeaderPressed(object sender, PointerRoutedEventArgs e)
-        {
-            _draggingSidebar = SidebarHeader.CapturePointer(e.Pointer);
-            e.Handled = _draggingSidebar;
-        }
-
-        private void OnSidebarHeaderMoved(object sender, PointerRoutedEventArgs e)
-        {
-            if (!_draggingSidebar)
-            {
-                return;
-            }
-
-            ShowDockHint(e.GetCurrentPoint(RootGrid).Position.X > RootGrid.ActualWidth / 2);
-        }
-
-        private void OnSidebarHeaderReleased(object sender, PointerRoutedEventArgs e)
-        {
-            if (!_draggingSidebar)
-            {
-                return;
-            }
-
-            bool onRight = e.GetCurrentPoint(RootGrid).Position.X > RootGrid.ActualWidth / 2;
-            SidebarHeader.ReleasePointerCapture(e.Pointer);
-            EndSidebarDrag(dock: true, onRight);
-            e.Handled = true;
-        }
-
-        private void EndSidebarDrag(bool dock, bool onRight = false)
-        {
-            _draggingSidebar = false;
-            HideDockHint();
-
-            if (dock)
-            {
-                DockSidebar(onRight);
-            }
-        }
-
-        /// <summary>Half-window preview of where the panel would land.</summary>
-        private void ShowDockHint(bool onRight)
-        {
-            _dockHint ??= new Border
-            {
-                Background = AppAccent.DropFillBrush(),
-                BorderBrush = AppAccent.Brush(),
-                BorderThickness = new Thickness(2),
-                IsHitTestVisible = false,
-                Width = 220,
-            };
-
-            if (!RootGrid.Children.Contains(_dockHint))
-            {
-                Grid.SetRow(_dockHint, 1);
-                RootGrid.Children.Add(_dockHint);
-            }
-
-            _dockHint.HorizontalAlignment = onRight ? HorizontalAlignment.Right : HorizontalAlignment.Left;
-            _dockHint.VerticalAlignment = VerticalAlignment.Stretch;
-            _dockHint.Visibility = Visibility.Visible;
-        }
-
-        private void HideDockHint()
-        {
-            if (_dockHint is not null)
-            {
-                _dockHint.Visibility = Visibility.Collapsed;
-                RootGrid.Children.Remove(_dockHint);
-            }
         }
 
         private void UpdateProfileEmptyState()
@@ -599,37 +581,165 @@ namespace XCENA_Terminal_Dev
         private void OnActiveSessionChanged()
         {
             UpdateWindowTitle();
+            UpdateStatusSession();
             UpdateLayoutChrome();
             SyncFilesTab();
         }
 
+        // ---------- status bar ----------
+
+        /// <summary>
+        /// Starts the IME poll. Windows raises no event when Han/Yeong is pressed, and the focused
+        /// control lives in the WebView2 process, so the mode has to be asked for on a timer.
+        /// </summary>
+        private void SetUpStatusBar()
+        {
+            _imeTimer = DispatcherQueue.CreateTimer();
+            _imeTimer.Interval = TimeSpan.FromMilliseconds(250);
+            _imeTimer.Tick += (_, _) =>
+            {
+                UpdateImeStatus();
+                UpdateStatusSession();
+                UpdateStatusFont();
+            };
+            _imeTimer.Start();
+
+            UpdateImeStatus();
+            UpdateStatusSession();
+            UpdateStatusFont();
+        }
+
+        /// <summary>
+        /// Names the font the terminal is drawing with. Automatic is resolved to the family it
+        /// actually landed on, because "Automatic" alone does not answer the question.
+        /// </summary>
+        private void UpdateStatusFont()
+        {
+            string chosen = _appearanceStore.Current.FontFamily;
+
+            int size = _appearanceStore.Current.SafeFontSize;
+
+            string text = chosen.Length > 0
+                ? $"{chosen} · {size}"
+                : $"{FontProbe.ResolveAutomatic(TerminalFont.AutomaticOrder) ?? "Cascadia Mono"} (auto) · {size}";
+
+            if (StatusFont.Text != text)
+            {
+                StatusFont.Text = text;
+            }
+        }
+
+        private void UpdateImeStatus()
+        {
+            ImeMode mode = ImeStatus.Read(_windowHandle);
+
+            // Unavailable means another app is in front and owns the IME; the last reading is still
+            // the best thing to show, so leave the pill alone rather than claiming Latin.
+            if (mode == ImeMode.Unavailable || mode == _imeMode)
+            {
+                return;
+            }
+
+            _imeMode = mode;
+            bool hangul = mode == ImeMode.Hangul;
+            StatusIme.Text = hangul ? "Kor" : "Eng";
+            StatusImePill.Background = hangul
+                ? AppAccent.Brush()
+                : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            StatusIme.Foreground = hangul
+                ? new SolidColorBrush(Microsoft.UI.Colors.White)
+                : (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
+        }
+
+        /// <summary>
+        /// Called from the same tick as the IME poll rather than wired to a dozen events; the text
+        /// is only assigned when it actually changes.
+        /// </summary>
+        private void UpdateStatusSession()
+        {
+            TerminalView? view = _surface.ActiveView;
+
+            string text;
+            if (view?.Profile is not { } profile)
+            {
+                text = "No open sessions";
+            }
+            else
+            {
+                string platform = view.Platform.IsKnown
+                    ? view.Platform.Name.Length > 0
+                        ? view.Platform.Name
+                        : RemotePlatform.Describe(view.Platform.Os)
+                    : string.Empty;
+
+                text = platform.Length > 0 ? $"{profile.Endpoint}  ·  {platform}" : profile.Endpoint;
+            }
+
+            if (StatusSession.Text != text)
+            {
+                StatusSession.Text = text;
+            }
+        }
+
+        private void OnCopyOnSelectClick(object sender, RoutedEventArgs e)
+        {
+            _layoutStore.Current.CopyOnSelect = CopyOnSelectItem.IsChecked;
+            _layoutStore.Save();
+            _surface.ApplyCopyOnSelect(_layoutStore.Current.CopyOnSelect);
+        }
+
+        /// <summary>Font family and size in one dialog, with a preview that shows CJK alignment.</summary>
+        private async void OnFontClick(object sender, RoutedEventArgs e)
+        {
+            var dialog = new FontDialog(_appearanceStore.Current);
+            if (await ShowDialogAsync(dialog) != ContentDialogResult.Primary)
+            {
+                return;
+            }
+
+            TerminalAppearance next = _appearanceStore.Current.Clone();
+            next.FontFamily = dialog.Family;
+            next.FontSize = dialog.Size;
+
+            _appearanceStore.Save(next);
+            _surface.ApplyAppearance(_appearanceStore.Current);
+        }
+
         // ---------- sidebar tabs ----------
 
-        private void OnSessionsTabClick(object sender, RoutedEventArgs e) => SelectSidebarTab(files: false);
+        private void OnSessionsTabClick(object sender, RoutedEventArgs e) => SelectSidebarTab(SidebarTab.Sessions);
 
-        private void OnFilesTabClick(object sender, RoutedEventArgs e) => SelectSidebarTab(files: true);
+        private void OnFilesTabClick(object sender, RoutedEventArgs e) => SelectSidebarTab(SidebarTab.Files);
 
-        private void SelectSidebarTab(bool files)
+        private void OnToolsTabClick(object sender, RoutedEventArgs e) => SelectSidebarTab(SidebarTab.Tools);
+
+        private void SelectSidebarTab(SidebarTab tab)
         {
-            // "New connection" now lives inside the profile card, so hiding the card hides it too.
-            ProfileCard.Visibility = files ? Visibility.Collapsed : Visibility.Visible;
-            FilesCard.Visibility = files ? Visibility.Visible : Visibility.Collapsed;
+            // "New connection" lives inside the profile card, so hiding the card hides it too.
+            ProfileCard.Visibility = Show(tab == SidebarTab.Sessions);
+            FilesCard.Visibility = Show(tab == SidebarTab.Files);
+            ToolsCard.Visibility = Show(tab == SidebarTab.Tools);
 
             var accent = AppAccent.Brush();
             var clear = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
             var dim = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
             var bright = (Brush)Application.Current.Resources["TextFillColorPrimaryBrush"];
 
-            SessionsTabMarker.Background = files ? clear : accent;
-            FilesTabMarker.Background = files ? accent : clear;
-            SessionsTabIcon.Foreground = files ? dim : bright;
-            FilesTabIcon.Foreground = files ? bright : dim;
+            SessionsTabMarker.Background = tab == SidebarTab.Sessions ? accent : clear;
+            FilesTabMarker.Background = tab == SidebarTab.Files ? accent : clear;
+            ToolsTabMarker.Background = tab == SidebarTab.Tools ? accent : clear;
 
-            if (files)
+            SessionsTabIcon.Foreground = tab == SidebarTab.Sessions ? bright : dim;
+            FilesTabIcon.Foreground = tab == SidebarTab.Files ? bright : dim;
+            ToolsTabIcon.Foreground = tab == SidebarTab.Tools ? bright : dim;
+
+            if (tab == SidebarTab.Files)
             {
                 SyncFilesTab();
             }
         }
+
+        private static Visibility Show(bool visible) => visible ? Visibility.Visible : Visibility.Collapsed;
 
         /// <summary>Points the file tree at whichever session is active, when that tab is showing.</summary>
         private void SyncFilesTab()
@@ -663,6 +773,7 @@ namespace XCENA_Terminal_Dev
         /// </summary>
         private void OnOptionsOpening(object sender, object e)
         {
+            CopyOnSelectItem.IsChecked = _layoutStore.Current.CopyOnSelect;
             SftpShowFilesItem.IsChecked = Files.ShowFiles;
 
             bool live = Files.IsLive;
@@ -736,25 +847,25 @@ namespace XCENA_Terminal_Dev
             _layoutStore.Current.ShowRemoteFiles = showFiles;
             _layoutStore.Save();
 
-            SelectSidebarTab(files: true);
+            SelectSidebarTab(SidebarTab.Files);
             await Files.SetShowFilesAsync(showFiles);
         }
 
         private async void OnSftpUploadClick(object sender, RoutedEventArgs e)
         {
-            SelectSidebarTab(files: true);
+            SelectSidebarTab(SidebarTab.Files);
             await Files.PickAndUploadAsync();
         }
 
         private async void OnSftpDownloadClick(object sender, RoutedEventArgs e)
         {
-            SelectSidebarTab(files: true);
+            SelectSidebarTab(SidebarTab.Files);
             await Files.DownloadSelectedAsync();
         }
 
         private async void OnSftpRefreshClick(object sender, RoutedEventArgs e)
         {
-            SelectSidebarTab(files: true);
+            SelectSidebarTab(SidebarTab.Files);
             await Files.RefreshAsync();
         }
 
@@ -765,7 +876,9 @@ namespace XCENA_Terminal_Dev
             bool split = panes > 1;
 
             // Panes nest, so there is no single orientation to report — the count is what matters.
-            LayoutLabel.Text = split ? $"Split ({panes})" : "Single pane";
+            // The unsplit label matches its menu item word for word, so the button reads as the
+            // menu it opens rather than as a shortened version of it.
+            LayoutLabel.Text = split ? $"Split into {panes} panes" : "Single pane (merge all)";
 
             LayoutSingleItem.IsChecked = !split;
             LayoutSideItem.IsChecked = false;
@@ -792,6 +905,7 @@ namespace XCENA_Terminal_Dev
 
         private void OnWindowClosed(object sender, WindowEventArgs args)
         {
+            _imeTimer?.Stop();
             Files.ForgetAll();
             _surface.ShutdownAll();
         }

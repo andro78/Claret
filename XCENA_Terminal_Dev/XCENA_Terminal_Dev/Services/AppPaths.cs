@@ -21,6 +21,8 @@ namespace XCENA_Terminal_Dev.Services
 
         public static string LayoutFile => Path.Combine(DataDirectory, "layout.json");
 
+        public static string HighlightsFile => Path.Combine(DataDirectory, "highlights.json");
+
         private static string CreateDataDirectory()
         {
             string root = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);

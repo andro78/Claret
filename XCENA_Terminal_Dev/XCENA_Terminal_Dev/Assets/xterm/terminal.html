@@ -90,7 +90,9 @@
             }
 
             var term = new Terminal({
-                allowProposedApi: false,
+                // Decorations, used for keyword highlighting, are still proposed API in xterm.js;
+                // registerDecoration throws outright without this.
+                allowProposedApi: true,
                 cursorBlink: true,
                 cursorStyle: 'bar',
                 // D2Coding first for anyone who has it (Hangul is exactly 2x the Latin advance);
@@ -179,6 +181,258 @@
                 setFontSize(term.options.fontSize + delta);
             }
 
+            // ---- font, and why Hangul needs one picked carefully ---------------------------
+            // A terminal gives a wide character exactly two cells. Hangul only fills them when
+            // the font advances 2x its Latin width for one syllable; with a Latin font plus a
+            // fallback for Hangul the glyph is narrower than its cells and columns drift apart.
+            // These faces get it right: D2Coding and NanumGothicCoding (both Korean coding
+            // fonts), and the old Windows *Che faces, which ship with Windows.
+            var HANGUL_FONTS = ['D2Coding', 'NanumGothicCoding', 'GulimChe', 'DotumChe'];
+            var FALLBACK_FONTS = "'Cascadia Mono', 'Consolas', 'GulimChe', 'Malgun Gothic', monospace";
+            var metricsProbe = null;
+
+            // Measures one family on its own. A family that is not installed falls back to the
+            // proportional UI font, which fails the monospace test — that is how absence is told.
+            function fontMetrics(family) {
+                if (!metricsProbe) {
+                    metricsProbe = document.createElement('canvas').getContext('2d');
+                }
+
+                metricsProbe.font = "64px '" + family + "'";
+                var latin = metricsProbe.measureText('M').width;
+                var narrow = metricsProbe.measureText('i').width;
+                var wide = metricsProbe.measureText('가').width;
+
+                return {
+                    monospace: latin > 0 && Math.abs(latin - narrow) < 0.05,
+                    ratio: latin > 0 ? wide / latin : 0
+                };
+            }
+
+            function alignsHangul(family) {
+                var m = fontMetrics(family);
+                return m.monospace && Math.abs(m.ratio - 2) < 0.02;
+            }
+
+            function fontStack(request) {
+                if (request) {
+                    return "'" + request + "', " + FALLBACK_FONTS;
+                }
+
+                for (var i = 0; i < HANGUL_FONTS.length; i++) {
+                    if (alignsHangul(HANGUL_FONTS[i])) {
+                        return "'" + HANGUL_FONTS[i] + "', " + FALLBACK_FONTS;
+                    }
+                }
+
+                return FALLBACK_FONTS;
+            }
+
+            function applyFontFamily(request) {
+                var stack = fontStack(request);
+                if (stack === term.options.fontFamily) {
+                    return;
+                }
+
+                term.options.fontFamily = stack;
+                safeFit();
+            }
+
+            // Start aligned: the host sends its own choice a moment later, but the first frames
+            // are drawn before that arrives.
+            applyFontFamily('');
+
+
+            // ---- keyword highlighting ------------------------------------------------------
+            // Rules come from the host as JSON. Matching runs over the visible rows only and
+            // paints cell decorations, so nothing is injected into the byte stream: a TUI's own
+            // colours stay intact and the highlight disappears cleanly when a rule is removed.
+            var highlightRules = [];
+            var decorations = [];
+            var highlightTimer = 0;
+            var HIGHLIGHT_LIMIT = 2000;
+
+
+            function setHighlightRules(list) {
+                highlightRules = [];
+
+                for (var i = 0; i < list.length; i++) {
+                    var rule = list[i];
+                    if (!rule || !rule.pattern) {
+                        continue;
+                    }
+
+                    // Patterns are literal text, so the metacharacters are escaped here: "1.2.3"
+                    // must not match "1x2y3".
+                    var source = rule.pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    var colour = rule.color || '#f5c542';
+
+                    try {
+                        highlightRules.push({
+                            re: new RegExp(source, rule.ignoreCase ? 'gi' : 'g'),
+                            // Text-only leaves the cell background alone and colours the glyphs;
+                            // a block paints the cells and picks ink that stays readable on them.
+                            background: rule.textOnly ? undefined : colour,
+                            foreground: rule.textOnly ? colour : readableInk(colour)
+                        });
+                    } catch (e) {
+                        post('ehighlight pattern rejected: ' + rule.pattern);
+                    }
+                }
+
+                scheduleHighlight();
+            }
+
+            // Dark text on a light highlight and vice versa, so a match is always readable.
+            function readableInk(hex) {
+                var m = /^#?([0-9a-f]{6})$/i.exec(hex);
+                if (!m) {
+                    return '#000000';
+                }
+
+                var value = parseInt(m[1], 16);
+                var r = (value >> 16) & 255;
+                var g = (value >> 8) & 255;
+                var b = value & 255;
+                return (r * 299 + g * 587 + b * 114) / 1000 >= 140 ? '#000000' : '#ffffff';
+            }
+
+            function clearDecorations() {
+                for (var i = 0; i < decorations.length; i++) {
+                    try {
+                        decorations[i].dispose();
+                    } catch (e) {
+                        /* already gone with its line */
+                    }
+                }
+
+                decorations = [];
+            }
+
+            function scheduleHighlight() {
+                if (highlightTimer) {
+                    return;
+                }
+
+                highlightTimer = setTimeout(function () {
+                    highlightTimer = 0;
+                    applyHighlights();
+                }, 50);
+            }
+
+            // Cells, not characters: a wide glyph occupies two columns but one string index, so a
+            // match's column has to be looked up rather than assumed equal to its string offset.
+            function readRow(line) {
+                var text = '';
+                var columns = [];
+                var cell = line.getCell(0);
+
+                for (var x = 0; x < line.length; x++) {
+                    cell = line.getCell(x, cell);
+                    if (!cell) {
+                        continue;
+                    }
+
+                    var chars = cell.getChars();
+                    if (cell.getWidth() === 0) {
+                        continue;   // trailing half of a wide glyph
+                    }
+
+                    if (chars === '') {
+                        chars = ' ';
+                    }
+
+                    for (var c = 0; c < chars.length; c++) {
+                        columns.push(x);
+                    }
+
+                    text += chars;
+                }
+
+                columns.push(line.length);
+                return { text: text, columns: columns };
+            }
+
+            function applyHighlights() {
+                clearDecorations();
+
+                if (highlightRules.length === 0 || !term.element) {
+                    return;
+                }
+
+                var buffer = term.buffer.active;
+                var anchor = buffer.baseY + buffer.cursorY;
+
+                for (var row = 0; row < term.rows; row++) {
+                    var absolute = buffer.viewportY + row;
+                    var line = buffer.getLine(absolute);
+                    if (!line) {
+                        continue;
+                    }
+
+                    var scan = readRow(line);
+                    if (scan.text.trim() === '') {
+                        continue;
+                    }
+
+                    for (var r = 0; r < highlightRules.length; r++) {
+                        var rule = highlightRules[r];
+                        rule.re.lastIndex = 0;
+
+                        var match;
+                        while ((match = rule.re.exec(scan.text)) !== null) {
+                            if (match[0].length === 0) {
+                                rule.re.lastIndex++;   // a zero-width match would spin forever
+                                continue;
+                            }
+
+                            var startX = scan.columns[match.index];
+                            var endX = scan.columns[match.index + match[0].length];
+                            if (startX === undefined || endX === undefined || endX <= startX) {
+                                continue;
+                            }
+
+                            if (!decorate(absolute - anchor, startX, endX - startX, rule)) {
+                                return;   // hit the cap; stop scanning entirely
+                            }
+                        }
+                    }
+                }
+            }
+
+            function decorate(offset, x, width, rule) {
+                if (decorations.length >= HIGHLIGHT_LIMIT) {
+                    return false;
+                }
+
+                var marker = term.registerMarker(offset);
+                if (!marker) {
+                    return true;
+                }
+
+                var decoration = term.registerDecoration({
+                    marker: marker,
+                    x: x,
+                    width: width,
+                    backgroundColor: rule.background,
+                    foregroundColor: rule.foreground,
+                    layer: 'bottom'
+                });
+
+                if (!decoration) {
+                    marker.dispose();
+                    return true;
+                }
+
+                decorations.push(decoration);
+                return true;
+            }
+
+            // Re-scan on the events that actually change what is on screen. Deliberately not
+            // onRender: creating decorations triggers a render, which would loop forever.
+            term.onWriteParsed(scheduleHighlight);
+            term.onScroll(scheduleHighlight);
+            term.onResize(scheduleHighlight);
             // Terminal -> host
             term.onData(function (data) {
                 post('i' + base64FromString(data));
@@ -203,14 +457,33 @@
                 if (ev.type !== 'keydown') {
                     return true;
                 }
+                // Mid-composition (Hangul, kana, pinyin) every key belongs to the IME. Claiming
+                // one here would commit or drop a syllable half-built.
+                if (ev.isComposing || ev.keyCode === 229) {
+                    return true;
+                }
                 if (ev.ctrlKey && ev.shiftKey && (ev.key === 'C' || ev.key === 'c')) {
-                    var selection = term.getSelection();
-                    if (selection) {
-                        post('c' + base64FromString(selection));
-                    }
+                    copySelection();
                     return false;
                 }
                 if (ev.ctrlKey && ev.shiftKey && (ev.key === 'V' || ev.key === 'v')) {
+                    post('v');
+                    return false;
+                }
+
+                // Plain Ctrl+C copies a selection only when copy-on-select is off. With it on the
+                // selection is already on the clipboard, so Ctrl+C stays SIGINT — otherwise a
+                // selection left on screen would swallow the interrupt, which a terminal must not do.
+                if (ev.ctrlKey && !ev.shiftKey && !ev.altKey && (ev.key === 'C' || ev.key === 'c')) {
+                    if (copyOnSelect || !term.hasSelection()) {
+                        return true;
+                    }
+
+                    copySelection();
+                    term.clearSelection();
+                    return false;
+                }
+                if (ev.ctrlKey && !ev.shiftKey && !ev.altKey && (ev.key === 'V' || ev.key === 'v')) {
                     post('v');
                     return false;
                 }
@@ -246,16 +519,46 @@
                 return true;
             });
 
+            // ---- selection and clipboard ---------------------------------------------------
+            // Copy lives on the host side: the WebView sandbox would prompt for permission and
+            // cannot reach the Windows clipboard itself.
+            var copyOnSelect = true;
+
+            function copySelection() {
+                var selection = term.getSelection();
+                if (selection) {
+                    post('c' + base64FromString(selection));
+                }
+            }
+
             // The host cannot see clicks landing inside the WebView, so tell it which pane was hit.
-            term.element.addEventListener('mousedown', function () {
+            // Middle-click pastes, the way X11 terminals do.
+            term.element.addEventListener('mousedown', function (ev) {
                 post('kfocus');
+
+                if (ev.button === 1) {
+                    ev.preventDefault();
+                    post('v');
+                }
             }, true);
+
+            // Copy as soon as a drag-selection ends, so selecting is all it takes. Keyboard
+            // selection (Shift+arrows) and the API are deliberately left alone: this fires on the
+            // mouse gesture only, which is what makes it predictable.
+            term.element.addEventListener('mouseup', function (ev) {
+                if (copyOnSelect && ev.button === 0 && term.hasSelection()) {
+                    copySelection();
+                }
+            }, true);
+
+            // Double-click (word) and triple-click (line) land as one mouseup each, so they are
+            // already covered by the handler above.
 
             // Right-click: copy when there is a selection, paste otherwise (PuTTY-style).
             term.element.addEventListener('contextmenu', function (ev) {
                 ev.preventDefault();
                 if (term.hasSelection()) {
-                    post('c' + base64FromString(term.getSelection()));
+                    copySelection();
                     term.clearSelection();
                 } else {
                     post('v');
@@ -290,6 +593,7 @@
                             break;
                         case 'x':
                             term.clear();
+                            scheduleHighlight();
                             break;
                         case 'h': // theme patch, e.g. {"background":"#101820","foreground":"#d8e0e8"}
                             try {
@@ -302,6 +606,19 @@
                             } catch (e) {
                                 post('etheme parse failed: ' + e);
                             }
+                            break;
+                        case 'g': // highlight rules, e.g. [{"pattern":"error","color":"#f5c542"}]
+                            try {
+                                setHighlightRules(JSON.parse(body));
+                            } catch (e) {
+                                post('ehighlight parse failed: ' + e);
+                            }
+                            break;
+                        case 'w': // copy-on-select preference, "1" or "0"
+                            copyOnSelect = body === '1';
+                            break;
+                        case 'y': // font family, or empty for "pick one that lines Hangul up"
+                            applyFontFamily(body);
                             break;
                         case 's': // font size, e.g. "s14"
                             var size = parseInt(body, 10);

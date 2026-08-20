@@ -47,6 +47,12 @@ namespace XCENA_Terminal_Dev.Services
         /// <summary>Informational lines (host key pinning, banners) to echo into the terminal.</summary>
         public event EventHandler<string>? Notice;
 
+        /// <summary>
+        /// The SSH identification string the server sent, e.g. "SSH-2.0-OpenSSH_8.9p1 Ubuntu-3".
+        /// Available from the moment the handshake completes, even on hosts that run no commands.
+        /// </summary>
+        public string? ServerVersion { get; private set; }
+
         public bool IsConnected
         {
             get
@@ -97,6 +103,8 @@ namespace XCENA_Terminal_Dev.Services
                 throw new HostKeyMismatchException(hostKey.Failure);
             }
 
+            ServerVersion = connectionInfo.ServerVersion;
+
             try
             {
                 ShellStream shell = client.CreateShellStream(
@@ -131,6 +139,51 @@ namespace XCENA_Terminal_Dev.Services
 
                 throw;
             }
+        }
+
+        /// <summary>
+        /// Works out what the far end is running, for the tab icon. Asks the host first, on its own
+        /// exec channel so nothing lands in the interactive shell, and falls back to the SSH banner
+        /// when that is refused — a BMC or a forced-command account will refuse it. Best-effort by
+        /// design: an unknown platform is a normal answer, never an error.
+        /// </summary>
+        public async Task<RemotePlatform> DetectPlatformAsync(CancellationToken cancellationToken)
+        {
+            SshClient? client;
+            lock (_gate)
+            {
+                client = _client;
+            }
+
+            if (client is null || !client.IsConnected)
+            {
+                return RemotePlatform.Unknown;
+            }
+
+            try
+            {
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeout.CancelAfter(TimeSpan.FromSeconds(5));
+
+                // Both, in one channel: os-release names the distribution, uname covers the hosts
+                // that have no os-release at all (a BSD, a busybox appliance).
+                using SshCommand command = client.CreateCommand(
+                    "cat /etc/os-release 2>/dev/null; uname -sr 2>/dev/null");
+
+                await command.ExecuteAsync(timeout.Token).ConfigureAwait(false);
+
+                RemotePlatform probed = RemotePlatform.FromProbe(command.Result);
+                if (probed.IsKnown)
+                {
+                    return probed;
+                }
+            }
+            catch (Exception)
+            {
+                // No exec channel, no shell, or it took too long. The banner is the fallback.
+            }
+
+            return RemotePlatform.FromServerVersion(ServerVersion);
         }
 
         public void SendText(string text)

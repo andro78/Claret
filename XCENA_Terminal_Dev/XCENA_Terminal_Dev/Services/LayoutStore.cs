@@ -15,6 +15,13 @@ namespace XCENA_Terminal_Dev.Services
         public bool ShowRemoteFiles { get; set; }
 
         /// <summary>
+        /// Put a mouse selection straight on the clipboard, the way PuTTY and X11 terminals do.
+        /// On by default: it is what "select to copy" means, and the paste side has never needed a
+        /// keyboard shortcut either.
+        /// </summary>
+        public bool CopyOnSelect { get; set; } = true;
+
+        /// <summary>
         /// Where downloads are saved without asking. Empty means "show the save dialog every time",
         /// which is the default because writing to a remembered folder should be a deliberate choice.
         /// </summary>

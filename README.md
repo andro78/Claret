@@ -25,6 +25,7 @@ Services/SshTeardown       SSH 연결 해제를 UI 스레드 밖에서 처리
 Services/SshConnectionFactory  ConnectionInfo 생성 + 호스트 키 핀 검증 (셸/SFTP 공용)
 Services/RemoteFileService     SFTP 조회 + 파일 업로드/다운로드
 Controls/RemoteFilesView       사이드바 Files 탭의 원격 트리 / 전송 UI
+Controls/HighlightRulesView    사이드바 Tools 탭의 하이라이트 규칙 목록
 ```
 
 ### 화면 배치
@@ -203,6 +204,35 @@ Files 탭으로 전환된다: 진행률이 그 안에 표시되기 때문이다.
 없어진다. 연결은 세션별로 캐시되므로 탭을 왕복해도 재인증하지 않고, 세션이 닫히면
 (`SessionSurface.SessionClosing`) 함께 정리된다.
 
+
+### 터미널 하이라이트 (사이드바 Tools 탭)
+
+세로 탭 레일의 세 번째 아이콘이 `Tools`다. 원하는 텍스트가 터미널에 나타나면 그 부분만 색을
+칠한다. 규칙은 `Add rule`로 추가하고, 체크박스로 켜고 끄며, 행을 더블클릭하면 편집한다.
+
+| 항목 | 뜻 |
+|---|---|
+| Text to highlight | 칠할 텍스트. 리터럴이 기본이라 `1.2.3`이 `1x2y3`에 걸리지 않는다 |
+| Regular expression | 정규식으로 해석. 저장 전에 .NET `Regex`로 검증해 잘못된 패턴은 거부한다 |
+| Ignore case | 대소문자 무시 (기본 켜짐) |
+| Color | 칠할 배경색. 글자색은 배경 밝기에 따라 검정/흰색이 자동으로 정해진다 |
+
+규칙은 `highlights.json`에 저장되고, 열려 있는 모든 터미널과 이후 새로 열리는 세션에 즉시
+적용된다.
+
+**바이트 스트림에 색상 코드를 끼워 넣지 않는다.** 그 방식이 가장 쉽지만, SGR을 주입하면
+vim이나 htop 같은 TUI가 자기 색 상태를 잃고 화면이 망가진다. 대신 xterm.js의 **데코레이션**으로
+셀 배경만 덧칠한다.
+
+- 보이는 행만 검사한다(`viewportY`부터 `rows`개). 스크롤백 1만 줄을 매번 훑을 이유가 없다
+- 다시 검사하는 시점은 `onWriteParsed` / `onScroll` / `onResize`다. `onRender`는 쓰지 않는다 —
+  데코레이션을 만들면 렌더가 다시 일어나 무한 루프가 된다. 50ms 디바운스를 둔다
+- 문자 인덱스가 아니라 **셀 열**로 좌표를 잡는다. 한글은 두 칸을 쓰지만 문자열에서는 한 글자라,
+  `getCell`로 열 번호를 매핑하지 않으면 한글이 섞인 줄에서 하이라이트가 밀린다
+- 데코레이션은 xterm.js에서 아직 proposed API여서 `allowProposedApi: true`가 필요하다. 없으면
+  `registerDecoration`이 예외를 던진다
+- 한 화면에 2000개까지만 칠한다. 너무 헐한 정규식이 걸려도 렌더가 멈추지 않게 하는 상한이다
+
 ### 자동 재접속
 
 연결이 끊기면 **5초마다 자동으로 다시 접속**한다. 오버레이에 남은 시간과 시도 횟수가
@@ -220,6 +250,7 @@ WebView2 문자열 메시지의 첫 글자가 태그다.
 |---|---|---|
 | C# → JS | `o` | 셸 출력 (base64 UTF-8 바이트) |
 | C# → JS | `m` `p` `f` `z` `x` `s` | 알림 / 붙여넣기 / 포커스 / fit / clear / 폰트 크기 |
+| C# → JS | `h` `g` | 색 테마 패치 (JSON) / 하이라이트 규칙 (JSON) |
 | JS → C# | `i` | 키 입력 (base64 UTF-8) |
 | JS → C# | `r` | 그리드 크기 `cols,rows` → `ShellStream.ChangeWindowSize` |
 | JS → C# | `t` `c` `v` `k` | 제목 / 복사 / 붙여넣기 요청 / 창 단위 명령 |
@@ -351,6 +382,31 @@ MSIX로 배포/등록할 때는 Windows **개발자 모드**가 켜져 있어야
 
 `PublishTrimmed`는 끈 상태다 — SSH.NET이 암호 알고리즘을 리플렉션으로 찾기 때문에
 트리밍하면 런타임에 깨진다.
+
+
+## 앱 아이콘
+
+버건디(`#8C2332`) 라운드 플레이트 위에 노랑(`#FFC845`) 셸 프롬프트 `>_`를 올린 마크다.
+셰브런과 커서 모두 같은 노랑이다. 이미지 편집기 없이
+`tools/make-app-icon.ps1`이 GDI+로 도형을 그려서 생성한다 — 크기마다 다시 그리므로 어떤
+해상도에서도 뭉개지지 않고, 색을 바꾸려면 스크립트 상단의 색 상수만 고치면 된다.
+
+```powershell
+# 앱 아이콘(.ico) + MSIX 타일 이미지를 다시 생성
+powershell -ExecutionPolicy Bypass -File tools\make-app-icon.ps1 `
+  -AppAssets "XCENA_Terminal_Dev\XCENA_Terminal_Dev\Assets" `
+  -PackageImages "XCENA_Terminal_Dev\XCENA_Terminal_Dev (Package)\Images"
+```
+
+- `.ico`에는 16/20/24/32/40/48/64/128/256을 담는다. **20px 이하는 캐럿(`_`)을 빼고 셰브런만
+  굵게** 그린다 — 그 크기에서 두 요소를 같이 넣으면 뭉개져서 아무것도 안 보인다
+- `Assets\AppIcon.ico`는 `ApplicationIcon`으로 exe에 박히고(탐색기), 동시에 출력 폴더로 복사해
+  `AppWindow.SetIcon`으로 창에 지정한다(작업표시줄·Alt+Tab). 제목줄을 직접 그리는 앱이라
+  **언패키지 창은 exe 아이콘을 자동으로 물려받지 않으므로** 두 경로가 모두 필요하다
+- 무배경 변형(`altform-unplated`)만 노랑이 아니라 버건디로 그린다 - 플레이트가 없어 셸이 깔아 주는
+  배경 위에 얹히는데, 밝은 작업표시줄에 노랑을 올리면 거의 안 보인다
+- MSIX 타일은 매니페스트가 크기를 고정한다(`scale-200`은 기준 크기의 2배). 정사각 타일은 플레이트
+  포함, `targetsize-24_altform-unplated`는 배경 없이 버건디 마크만 그린다
 
 ## 렌더링 참고
 

@@ -485,15 +485,27 @@
                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                            Text="auto-yes" />
 
-                <!-- Round trip to the host and how much the session is actually moving. -->
-                <TextBlock x:Name="StatusNetwork"
-                           Grid.Column="3"
-                           Margin="0,0,12,0"
-                           VerticalAlignment="Center"
-                           TextWrapping="NoWrap"
-                           Style="{StaticResource CaptionTextBlockStyle}"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                           Text="" />
+                <!--
+                    Link health: a lamp for the state at a glance and the round trip in figures.
+                    Throughput lives in the tooltip — it is worth having, not worth the width.
+                -->
+                <StackPanel x:Name="StatusNetworkPanel"
+                            Grid.Column="3"
+                            Orientation="Horizontal"
+                            Spacing="6"
+                            Margin="0,0,12,0"
+                            VerticalAlignment="Center">
+                    <Ellipse x:Name="StatusNetworkLight"
+                             Width="8"
+                             Height="8"
+                             VerticalAlignment="Center" />
+                    <TextBlock x:Name="StatusNetwork"
+                               VerticalAlignment="Center"
+                               TextWrapping="NoWrap"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Text="" />
+                </StackPanel>
 
                 <!--
                     The font in use, "(auto)" when the app picked it — and the way to change it:

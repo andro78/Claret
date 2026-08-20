@@ -56,11 +56,18 @@ namespace XCENA_Terminal_Dev
         /// <summary>How often the host is pinged for the status bar. Latency is not worth more.</summary>
         private const long PingIntervalMilliseconds = 4000;
 
+        /// <summary>Round trip under this is a green lamp; over the second one it is red.</summary>
+        private const long GoodLatencyMilliseconds = 60;
+
+        private const long PoorLatencyMilliseconds = 200;
+
         private readonly Stopwatch _statusClock = Stopwatch.StartNew();
 
         private TerminalView? _trafficView;
         private (long At, long Received, long Sent)? _trafficMark;
         private string _lastAutoApproved = string.Empty;
+        private NetworkHealth _networkHealth = NetworkHealth.None;
+        private string _networkTooltip = string.Empty;
         private string? _pingHost;
         private long _pingMilliseconds = -1;
         private long _pingTakenAt = -PingIntervalMilliseconds;
@@ -795,31 +802,34 @@ namespace XCENA_Terminal_Dev
             if (view is null || view.Profile is not { } profile)
             {
                 _trafficMark = null;
-                SetStatusNetwork(string.Empty);
+                ShowNetwork(NetworkHealth.None, string.Empty, "No session");
                 return;
             }
 
             if (view.State != TerminalState.Connected)
             {
                 _trafficMark = null;
-                SetStatusNetwork(view.State switch
+
+                (NetworkHealth health, string label) = view.State switch
                 {
-                    TerminalState.Connecting => "connecting…",
-                    TerminalState.Reconnecting => "reconnecting…",
-                    TerminalState.Failed or TerminalState.Disconnected => "offline",
-                    _ => string.Empty,
-                });
+                    TerminalState.Connecting => (NetworkHealth.Warn, "connecting"),
+                    TerminalState.Reconnecting => (NetworkHealth.Warn, "reconnecting"),
+                    TerminalState.Failed or TerminalState.Disconnected => (NetworkHealth.Bad, "offline"),
+                    _ => (NetworkHealth.None, string.Empty),
+                };
+
+                ShowNetwork(health, string.Empty, label);
                 return;
             }
 
             (long received, long sent) = view.Traffic;
             long elapsed = _statusClock.ElapsedMilliseconds;
 
-            string rates = string.Empty;
+            string rates = "↓ — ↑ —";
             if (_trafficMark is { } mark && ReferenceEquals(_trafficView, view) && elapsed > mark.At)
             {
                 double seconds = (elapsed - mark.At) / 1000.0;
-                rates = $"↓{Rate((received - mark.Received) / seconds)} ↑{Rate((sent - mark.Sent) / seconds)}";
+                rates = $"↓ {Rate((received - mark.Received) / seconds)}  ↑ {Rate((sent - mark.Sent) / seconds)}";
             }
 
             _trafficView = view;
@@ -829,18 +839,63 @@ namespace XCENA_Terminal_Dev
             // answer is reused in between.
             StartPing(profile.Host, elapsed);
 
-            string latency = _pingHost == profile.Host && _pingMilliseconds >= 0
-                ? $"{_pingMilliseconds} ms"
-                : string.Empty;
+            bool haveLatency = _pingHost == profile.Host && _pingMilliseconds >= 0;
 
-            SetStatusNetwork(string.Join("  ", new[] { latency, rates }.Where(part => part.Length > 0)));
+            // Green while the round trip is short, amber once it drags — and amber too when the
+            // host drops ICMP, because "connected but unmeasured" is not the same as "good".
+            NetworkHealth quality = !haveLatency
+                ? NetworkHealth.Warn
+                : _pingMilliseconds < GoodLatencyMilliseconds
+                    ? NetworkHealth.Good
+                    : _pingMilliseconds < PoorLatencyMilliseconds
+                        ? NetworkHealth.Warn
+                        : NetworkHealth.Bad;
+
+            string figures = haveLatency ? $"{_pingMilliseconds} ms" : string.Empty;
+            string tooltip = haveLatency
+                ? $"{profile.Host} · {_pingMilliseconds} ms\n{rates}"
+                : $"{profile.Host} · no ping reply\n{rates}";
+
+            ShowNetwork(quality, figures, tooltip);
         }
 
-        private void SetStatusNetwork(string text)
+        /// <summary>How the link is doing, as the lamp shows it.</summary>
+        private enum NetworkHealth
         {
-            if (StatusNetwork.Text != text)
+            None,
+            Good,
+            Warn,
+            Bad,
+        }
+
+        private void ShowNetwork(NetworkHealth health, string figures, string tooltip)
+        {
+            if (StatusNetwork.Text != figures)
             {
-                StatusNetwork.Text = text;
+                StatusNetwork.Text = figures;
+            }
+
+            if (_networkHealth != health)
+            {
+                _networkHealth = health;
+
+                StatusNetworkLight.Visibility = health == NetworkHealth.None
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+
+                StatusNetworkLight.Fill = new SolidColorBrush(health switch
+                {
+                    NetworkHealth.Good => Windows.UI.Color.FromArgb(0xFF, 0x35, 0xC7, 0x59),
+                    NetworkHealth.Warn => Windows.UI.Color.FromArgb(0xFF, 0xE8, 0xA5, 0x1C),
+                    NetworkHealth.Bad => Windows.UI.Color.FromArgb(0xFF, 0xE0, 0x4F, 0x44),
+                    _ => Microsoft.UI.Colors.Transparent,
+                });
+            }
+
+            if (_networkTooltip != tooltip)
+            {
+                _networkTooltip = tooltip;
+                ToolTipService.SetToolTip(StatusNetworkPanel, tooltip);
             }
         }
 

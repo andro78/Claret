@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.Graphics;
 using Windows.Storage;
 using Windows.Storage.Pickers;
@@ -649,6 +650,103 @@ namespace XCENA_Terminal_Dev
             StatusIme.Foreground = hangul
                 ? new SolidColorBrush(Microsoft.UI.Colors.White)
                 : (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
+        }
+
+        // ---------- AI CLI installers ----------
+
+        /// <summary>
+        /// Built on Opening: the entries run against the live session, so what they can do depends
+        /// on whether one is connected.
+        /// </summary>
+        private void OnAiMenuOpening(object sender, object e)
+        {
+            AiMenu.Items.Clear();
+
+            TerminalView? view = _surface.ActiveView;
+            bool connected = view?.State == TerminalState.Connected;
+            string host = view?.Profile?.Endpoint ?? string.Empty;
+
+            foreach (AiTool tool in AiTool.All)
+            {
+                AiTool captured = tool;
+
+                var item = new MenuFlyoutItem
+                {
+                    Text = $"Install {tool.Name}",
+                    // The endpoint belongs on the item: this installs on the far end, not here.
+                    KeyboardAcceleratorTextOverride = connected ? host : "no session",
+                    IsEnabled = connected,
+                };
+
+                item.Click += (_, _) => _ = InstallAiToolAsync(captured);
+                AiMenu.Items.Add(item);
+            }
+
+            AiMenu.Items.Add(new MenuFlyoutSeparator());
+
+            foreach (AiTool tool in AiTool.All)
+            {
+                AiTool captured = tool;
+
+                var copy = new MenuFlyoutItem { Text = $"Copy {tool.Name} command" };
+                copy.Click += (_, _) => CopyText(captured.Script);
+                AiMenu.Items.Add(copy);
+            }
+        }
+
+        /// <summary>
+        /// Confirms first: this types into a live shell on someone else's machine, and the command
+        /// is worth reading before it runs.
+        /// </summary>
+        private async Task InstallAiToolAsync(AiTool tool)
+        {
+            TerminalView? view = _surface.ActiveView;
+            if (view?.State != TerminalState.Connected || view.Profile is not { } profile)
+            {
+                return;
+            }
+
+            var body = new StackPanel { Spacing = 10 };
+            body.Children.Add(new TextBlock
+            {
+                Text = $"Runs on {profile.Endpoint} as {profile.Username}:",
+                TextWrapping = TextWrapping.Wrap,
+            });
+            body.Children.Add(new TextBlock
+            {
+                Text = tool.Script,
+                FontFamily = new FontFamily("Cascadia Mono, Consolas, monospace"),
+                FontSize = 12,
+                TextWrapping = TextWrapping.Wrap,
+                IsTextSelectionEnabled = true,
+            });
+
+            var confirm = new ContentDialog
+            {
+                Title = $"Install {tool.Name}",
+                Content = body,
+                PrimaryButtonText = "Run",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Close,
+            };
+
+            if (await ShowDialogAsync(confirm) != ContentDialogResult.Primary)
+            {
+                return;
+            }
+
+            // Re-check: the dialog was open for a while and the session may have dropped.
+            if (_surface.ActiveView is { State: TerminalState.Connected } target)
+            {
+                target.SendInput(tool.Script + "\n");
+            }
+        }
+
+        private static void CopyText(string text)
+        {
+            var package = new DataPackage { RequestedOperation = DataPackageOperation.Copy };
+            package.SetText(text);
+            Clipboard.SetContent(package);
         }
 
         /// <summary>

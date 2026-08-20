@@ -87,13 +87,6 @@
                 <DropDownButton.Flyout>
                     <!-- Opening syncs the check mark and greys out what the tree cannot do yet. -->
                     <MenuFlyout Placement="Bottom" Opening="OnOptionsOpening">
-                                <MenuFlyoutItem x:Name="FontItem"
-                                        Text="Terminal font…"
-                                        Click="OnFontClick">
-                            <MenuFlyoutItem.Icon>
-                                <FontIcon Glyph="&#xE8D2;" />
-                            </MenuFlyoutItem.Icon>
-                        </MenuFlyoutItem>
                         <!-- Mouse selection straight to the clipboard; paste is middle-click or Ctrl+V. -->
                         <ToggleMenuFlyoutItem x:Name="CopyOnSelectItem"
                                               Text="Copy on selection"
@@ -268,11 +261,19 @@
 
                     <Grid Grid.Column="1">
 
+                <!--
+                    Translation on Z is what gives a ThemeShadow its depth; the value is the
+                    elevation, and the shadow follows the rounded corners on its own.
+                -->
                 <Border x:Name="ProfileCard"
                         Background="{ThemeResource LayerFillColorDefaultBrush}"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1"
-                        CornerRadius="8">
+                        CornerRadius="8"
+                        Translation="0,0,28">
+                    <Border.Shadow>
+                        <ThemeShadow />
+                    </Border.Shadow>
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="*" />
@@ -357,7 +358,11 @@
                         Background="{ThemeResource LayerFillColorDefaultBrush}"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1"
-                        CornerRadius="8">
+                        CornerRadius="8"
+                        Translation="0,0,28">
+                    <Border.Shadow>
+                        <ThemeShadow />
+                    </Border.Shadow>
                     <local2:RemoteFilesView x:Name="Files" />
                 </Border>
 
@@ -367,7 +372,11 @@
                         Background="{ThemeResource LayerFillColorDefaultBrush}"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1"
-                        CornerRadius="8">
+                        CornerRadius="8"
+                        Translation="0,0,28">
+                    <Border.Shadow>
+                        <ThemeShadow />
+                    </Border.Shadow>
                     <local2:HighlightRulesView x:Name="Tools" />
                 </Border>
 
@@ -419,13 +428,32 @@
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
             <Grid>
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
+                <!--
+                    Installs an AI CLI on the host you are connected to. Items are built on
+                    Opening, because what they can do depends on the live session.
+                -->
+                <DropDownButton x:Name="AiButton"
+                                Grid.Column="0"
+                                Height="22"
+                                Padding="8,0"
+                                Margin="0,0,10,0"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                ToolTipService.ToolTip="Install an AI CLI on this host">
+                    <TextBlock Text="AI" Style="{StaticResource CaptionTextBlockStyle}" />
+                    <DropDownButton.Flyout>
+                        <MenuFlyout x:Name="AiMenu" Placement="Top" Opening="OnAiMenuOpening" />
+                    </DropDownButton.Flyout>
+                </DropDownButton>
+
                 <TextBlock x:Name="StatusSession"
-                           Grid.Column="0"
+                           Grid.Column="1"
                            VerticalAlignment="Center"
                            TextWrapping="NoWrap"
                            TextTrimming="CharacterEllipsis"
@@ -433,19 +461,29 @@
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            Text="No open sessions" />
 
-                <!-- The font actually in use; "(auto)" when the app picked it. -->
-                <TextBlock x:Name="StatusFont"
-                           Grid.Column="1"
-                           Margin="0,0,10,0"
-                           VerticalAlignment="Center"
-                           TextWrapping="NoWrap"
-                           Style="{StaticResource CaptionTextBlockStyle}"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                           Text="" />
+                <!--
+                    The font in use, "(auto)" when the app picked it — and the way to change it:
+                    the status bar already answers "which font", so it is where the question is asked.
+                -->
+                <Button x:Name="StatusFontButton"
+                        Grid.Column="2"
+                        Height="22"
+                        Padding="6,0"
+                        Margin="0,0,6,0"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        ToolTipService.ToolTip="Terminal font and size"
+                        Click="OnFontClick">
+                    <TextBlock x:Name="StatusFont"
+                               TextWrapping="NoWrap"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Text="" />
+                </Button>
 
                 <!-- The IME reading: Kor while the Korean IME is composing Hangul, Eng otherwise. -->
                 <Border x:Name="StatusImePill"
-                        Grid.Column="2"
+                        Grid.Column="3"
                         MinWidth="40"
                         Padding="8,1"
                         CornerRadius="4"

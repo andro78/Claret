@@ -474,6 +474,7 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
                 <!--
@@ -503,12 +504,25 @@
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            Text="No open sessions" />
 
+                <!-- Shown only while this session is being recorded, with the file it goes to. -->
+                <TextBlock x:Name="StatusLog"
+                           Grid.Column="2"
+                           Margin="0,0,12,0"
+                           VerticalAlignment="Center"
+                           TextWrapping="NoWrap"
+                           TextTrimming="CharacterEllipsis"
+                           MaxWidth="200"
+                           Visibility="Collapsed"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                           Text="" />
+
                 <!--
                     Shown only while the AI auto-answer is on. An automation that answers prompts
                     on the user's behalf has to be visible while it is armed.
                 -->
                 <TextBlock x:Name="StatusAutoApprove"
-                           Grid.Column="2"
+                           Grid.Column="3"
                            Margin="0,0,12,0"
                            VerticalAlignment="Center"
                            TextWrapping="NoWrap"
@@ -524,7 +538,7 @@
                     Throughput lives in the tooltip — it is worth having, not worth the width.
                 -->
                 <StackPanel x:Name="StatusNetworkPanel"
-                            Grid.Column="3"
+                            Grid.Column="4"
                             Orientation="Horizontal"
                             Spacing="6"
                             Margin="0,0,12,0"
@@ -546,7 +560,7 @@
                     the status bar already answers "which font", so it is where the question is asked.
                 -->
                 <Button x:Name="StatusFontButton"
-                        Grid.Column="4"
+                        Grid.Column="5"
                         Height="22"
                         Padding="6,0"
                         Margin="0,0,6,0"
@@ -563,7 +577,7 @@
 
                 <!-- The IME reading: Kor while the Korean IME is composing Hangul, Eng otherwise. -->
                 <Border x:Name="StatusImePill"
-                        Grid.Column="5"
+                        Grid.Column="6"
                         MinWidth="40"
                         Padding="8,1"
                         CornerRadius="4"

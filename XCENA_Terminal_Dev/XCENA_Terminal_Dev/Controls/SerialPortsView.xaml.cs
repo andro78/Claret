@@ -84,6 +84,30 @@ namespace XCENA_Terminal_Dev.Controls
         /// <summary>Raised when the settings change, so the shell can remember them.</summary>
         public event EventHandler<SerialConnection>? SettingsChanged;
 
+        /// <summary>The user pinned the port and settings currently shown.</summary>
+        public event EventHandler<SerialConnection>? PinRequested;
+
+        /// <summary>The user asked to rename a pinned board; the shell owns the dialog.</summary>
+        public event EventHandler<SerialProfile>? RenameRequested;
+
+        /// <summary>The user unpinned a board.</summary>
+        public event EventHandler<SerialProfile>? UnpinRequested;
+
+        /// <summary>Binds the pinned list. Called once, before the first layout.</summary>
+        public void BindPinned(ObservableCollection<SerialProfile> pinned)
+        {
+            PinnedList.ItemsSource = pinned;
+            pinned.CollectionChanged += (_, _) => UpdatePinnedVisibility(pinned);
+            UpdatePinnedVisibility(pinned);
+        }
+
+        private void UpdatePinnedVisibility(ObservableCollection<SerialProfile> pinned)
+        {
+            Visibility show = pinned.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            PinnedHeader.Visibility = show;
+            PinnedList.Visibility = show;
+        }
+
         /// <summary>Applies the remembered settings and lists the ports. Called once, at startup.</summary>
         public void Initialize(SerialConnection settings)
         {
@@ -153,17 +177,57 @@ namespace XCENA_Terminal_Dev.Controls
 
         private void OnSelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (PortList.SelectedItem is SerialPortItem item)
+            bool selected = PortList.SelectedItem is SerialPortItem;
+
+            OpenButton.IsEnabled = selected;
+            PinButton.IsEnabled = selected;
+            OpenLabel.Text = PortList.SelectedItem is SerialPortItem item
+                ? $"Open {item.PortName}"
+                : "Open port";
+        }
+
+        private void OnPinClick(object sender, RoutedEventArgs e)
+        {
+            SerialConnection settings = Current;
+            if (settings.PortName.Length > 0)
             {
-                OpenButton.IsEnabled = true;
-                OpenLabel.Text = $"Open {item.PortName}";
-            }
-            else
-            {
-                OpenButton.IsEnabled = false;
-                OpenLabel.Text = "Open port";
+                PinRequested?.Invoke(this, settings);
             }
         }
+
+        private void OnPinnedDoubleTapped(object sender, DoubleTappedRoutedEventArgs e) => OpenPinned();
+
+        private void OnOpenPinnedClick(object sender, RoutedEventArgs e) => OpenPinned();
+
+        private void OnRenamePinnedClick(object sender, RoutedEventArgs e)
+        {
+            if (Pinned(sender) is { } profile)
+            {
+                RenameRequested?.Invoke(this, profile);
+            }
+        }
+
+        private void OnUnpinClick(object sender, RoutedEventArgs e)
+        {
+            if (Pinned(sender) is { } profile)
+            {
+                UnpinRequested?.Invoke(this, profile);
+            }
+        }
+
+        private void OpenPinned()
+        {
+            if (PinnedList.SelectedItem is SerialProfile profile)
+            {
+                OpenRequested?.Invoke(this, profile.Settings);
+            }
+        }
+
+        /// <summary>Menu items carry the right-clicked row in DataContext; fall back to the selection.</summary>
+        private SerialProfile? Pinned(object sender) =>
+            sender is FrameworkElement { DataContext: SerialProfile fromContext }
+                ? fromContext
+                : PinnedList.SelectedItem as SerialProfile;
 
         private void OnSettingChanged(object sender, SelectionChangedEventArgs e)
         {

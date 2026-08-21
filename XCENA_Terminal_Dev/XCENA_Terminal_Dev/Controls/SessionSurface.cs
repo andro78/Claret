@@ -201,6 +201,31 @@ namespace XCENA_Terminal_Dev.Controls
 
         public void FocusActive() => _active?.Group.SelectedSession?.FocusTerminal();
 
+        /// <summary>
+        /// The session holding a serial port, if this window has one. A port can only be open once,
+        /// so this is what lets the shell say so before the platform does.
+        /// </summary>
+        public TerminalView? FindSerialSession(string portName) =>
+            Leaves()
+                .SelectMany(leaf => leaf.Group.Sessions)
+                .FirstOrDefault(view => view.Serial is { } serial
+                    && string.Equals(serial.PortName, portName, StringComparison.OrdinalIgnoreCase)
+                    && view.State is TerminalState.Connected or TerminalState.Connecting
+                        or TerminalState.Reconnecting);
+
+        /// <summary>Brings a session to the front: its pane active, its tab selected, focus in it.</summary>
+        public void Activate(TerminalView view)
+        {
+            if (LeafOf(view) is not { } leaf)
+            {
+                return;
+            }
+
+            SetActive(leaf, notify: true);
+            leaf.Group.Select(view);
+            view.FocusTerminal();
+        }
+
         /// <summary>Pushes the user's colours to every open terminal and to the pane chrome.</summary>
         public void ApplyAppearance(TerminalAppearance appearance)
         {
@@ -1070,7 +1095,10 @@ namespace XCENA_Terminal_Dev.Controls
         /// <summary>Right-click menu on a tab.</summary>
         private MenuFlyout BuildTabMenu(TerminalView view)
         {
+            // Opening resolves what this session can do: whether it is recording, and whether a
+            // break means anything on its link.
             var menu = new MenuFlyout();
+            menu.Opening += (_, _) => SyncTabMenu(view, menu);
 
             var duplicate = new MenuFlyoutItem { Text = "Duplicate" };
             duplicate.Click += (_, _) =>
@@ -1105,15 +1133,54 @@ namespace XCENA_Terminal_Dev.Controls
             };
             close.Click += (_, _) => CloseSession(view);
 
+            var log = new MenuFlyoutItem { Text = "Log to file…" };
+            log.Click += (_, _) => LogRequested?.Invoke(this, view);
+
+            var breakItem = new MenuFlyoutItem { Text = "Send break" };
+            breakItem.Click += (_, _) => view.SendBreak();
+
             menu.Items.Add(duplicate);
             menu.Items.Add(new MenuFlyoutSeparator());
             menu.Items.Add(splitRight);
             menu.Items.Add(splitDown);
             menu.Items.Add(new MenuFlyoutSeparator());
+            menu.Items.Add(log);
+            menu.Items.Add(breakItem);
+            menu.Items.Add(new MenuFlyoutSeparator());
             menu.Items.Add(close);
 
             return menu;
         }
+
+        /// <summary>
+        /// Retitles the log entry to say what it would do now, and hides the break where it means
+        /// nothing — an SSH tab offering "Send break" would just be a dead item.
+        /// </summary>
+        private static void SyncTabMenu(TerminalView view, MenuFlyout menu)
+        {
+            foreach (object item in menu.Items)
+            {
+                if (item is not MenuFlyoutItem entry)
+                {
+                    continue;
+                }
+
+                if (entry.Text.StartsWith("Log to file", StringComparison.Ordinal)
+                    || entry.Text.StartsWith("Stop logging", StringComparison.Ordinal))
+                {
+                    entry.Text = view.LogPath is { } path
+                        ? $"Stop logging ({System.IO.Path.GetFileName(path)})"
+                        : "Log to file…";
+                }
+                else if (entry.Text == "Send break")
+                {
+                    entry.Visibility = view.SupportsBreak ? Visibility.Visible : Visibility.Collapsed;
+                }
+            }
+        }
+
+        /// <summary>The user asked to start or stop recording this session; the shell picks the file.</summary>
+        public event EventHandler<TerminalView>? LogRequested;
 
         private void SplitTab(TerminalView view, Orientation orientation)
         {

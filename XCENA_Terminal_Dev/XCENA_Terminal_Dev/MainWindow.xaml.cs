@@ -45,6 +45,7 @@ namespace XCENA_Terminal_Dev
         private readonly AppearanceStore _appearanceStore = new();
         private readonly LayoutStore _layoutStore = new();
         private readonly HighlightStore _highlightStore = new();
+        private readonly SerialProfileStore _serialProfileStore = new();
         private readonly SessionSurface _surface = new();
         private readonly IntPtr _windowHandle;
 
@@ -96,6 +97,7 @@ namespace XCENA_Terminal_Dev
             _appearanceStore.Load();
             _layoutStore.Load();
             _highlightStore.Load();
+            _serialProfileStore.Load();
 
             InitializeComponent();
 
@@ -143,6 +145,7 @@ namespace XCENA_Terminal_Dev
             _surface.ApplyHighlights(_highlightStore.Rules);
             _surface.ApplyCopyOnSelect(_layoutStore.Current.CopyOnSelect);
 
+            Serial.BindPinned(_serialProfileStore.Profiles);
             Serial.Initialize(_layoutStore.Current.Serial);
             Serial.OpenRequested += (_, settings) => _ = OpenSerialAsync(settings);
             Serial.SettingsChanged += (_, settings) =>
@@ -150,8 +153,12 @@ namespace XCENA_Terminal_Dev
                 _layoutStore.Current.Serial = settings;
                 _layoutStore.Save();
             };
+            Serial.PinRequested += (_, settings) => _ = PinSerialAsync(settings);
+            Serial.RenameRequested += (_, profile) => _ = RenameSerialAsync(profile);
+            Serial.UnpinRequested += (_, profile) => _serialProfileStore.Remove(profile);
             // Nothing to arm at startup: the AI auto-answer is per session and starts off.
             _surface.AutoApproved += OnSurfaceAutoApproved;
+            _surface.LogRequested += (_, view) => _ = ToggleSessionLogAsync(view);
 
             _surface.WindowCommandRequested += OnSurfaceWindowCommand;
             _surface.NewSessionRequested += (_, _) => ShowNewSessionMenu(_surface.ActiveAddAnchor);
@@ -731,6 +738,29 @@ namespace XCENA_Terminal_Dev
         private async Task OpenSerialAsync(SerialConnection settings)
         {
             SerialConnection snapshot = settings.Clone();
+
+            // A port opens once. Catching our own tab here beats letting the platform answer with
+            // "access denied", and it can offer the thing the user probably wanted: that tab.
+            if (_surface.FindSerialSession(snapshot.PortName) is { } existing)
+            {
+                var already = new ContentDialog
+                {
+                    Title = $"{snapshot.PortName} is already open",
+                    Content = $"This window already has {snapshot.PortName} open as "
+                        + $"\"{existing.SessionLabel}\". A serial port can only be held by one session.",
+                    PrimaryButtonText = "Go to it",
+                    CloseButtonText = "Cancel",
+                    DefaultButton = ContentDialogButton.Primary,
+                };
+
+                if (await ShowDialogAsync(already) == ContentDialogResult.Primary)
+                {
+                    _surface.Activate(existing);
+                }
+
+                return;
+            }
+
             TerminalView view = _surface.AddSerialSession(snapshot);
 
             UpdateEmptyState();
@@ -738,6 +768,144 @@ namespace XCENA_Terminal_Dev
             OnActiveSessionChanged();
 
             await _surface.StartSerialAsync(view, snapshot);
+        }
+
+        /// <summary>
+        /// Pins the port and settings under a name. The port description is offered as the default,
+        /// because "CP210x USB to UART" is a better first guess than "COM7" at what the board is.
+        /// </summary>
+        private async Task PinSerialAsync(SerialConnection settings)
+        {
+            string? name = await AskForNameAsync(
+                "Pin this console",
+                $"{settings.Summary}",
+                settings.DisplayName);
+
+            if (name is null)
+            {
+                return;
+            }
+
+            _serialProfileStore.Add(new SerialProfile
+            {
+                Name = name,
+                Settings = settings.Clone(),
+            });
+        }
+
+        private async Task RenameSerialAsync(SerialProfile profile)
+        {
+            string? name = await AskForNameAsync("Rename", profile.Detail, profile.DisplayName);
+            if (name is not null)
+            {
+                _serialProfileStore.Rename(profile, name);
+            }
+        }
+
+        /// <summary>One text box in a dialog: too small for its own file, too common to inline twice.</summary>
+        private async Task<string?> AskForNameAsync(string title, string detail, string suggested)
+        {
+            var box = new TextBox { Text = suggested, SelectionStart = suggested.Length };
+
+            var body = new StackPanel { Spacing = 8, Width = 320 };
+            body.Children.Add(new TextBlock
+            {
+                Text = detail,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+            });
+            body.Children.Add(box);
+
+            var dialog = new ContentDialog
+            {
+                Title = title,
+                Content = body,
+                PrimaryButtonText = "Save",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Primary,
+            };
+
+            if (await ShowDialogAsync(dialog) != ContentDialogResult.Primary)
+            {
+                return null;
+            }
+
+            string name = box.Text.Trim();
+            return name.Length > 0 ? name : suggested;
+        }
+
+        /// <summary>
+        /// Starts or stops recording a session. Stopping needs no dialog; starting asks where the
+        /// file goes, with a name that already says which session and when.
+        /// </summary>
+        private async Task ToggleSessionLogAsync(TerminalView view)
+        {
+            if (view.LogPath is not null)
+            {
+                view.StopLogging();
+                UpdateStatusLog();
+                return;
+            }
+
+            string suggested = $"{Sanitise(view.SessionLabel)}-{DateTime.Now:yyyyMMdd-HHmm}";
+
+            string? path;
+            try
+            {
+                var picker = new FileSavePicker
+                {
+                    SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+                    SuggestedFileName = suggested,
+                };
+
+                picker.FileTypeChoices.Add("Log file", new List<string> { ".log" });
+                picker.FileTypeChoices.Add("Text file", new List<string> { ".txt" });
+                WinRT.Interop.InitializeWithWindow.Initialize(picker, _windowHandle);
+
+                StorageFile? file = await picker.PickSaveFileAsync();
+                path = file?.Path;
+            }
+            catch (Exception ex)
+            {
+                await ShowDialogAsync(new ContentDialog
+                {
+                    Title = "Log to file",
+                    Content = $"Cannot open the save dialog: {ex.Message}",
+                    CloseButtonText = "Close",
+                });
+
+                return;
+            }
+
+            if (path is null)
+            {
+                return;
+            }
+
+            try
+            {
+                view.StartLogging(path, view.SessionLabel);
+            }
+            catch (Exception ex)
+            {
+                await ShowDialogAsync(new ContentDialog
+                {
+                    Title = "Log to file",
+                    Content = $"Cannot write to {path}: {ex.Message}",
+                    CloseButtonText = "Close",
+                });
+            }
+
+            UpdateStatusLog();
+        }
+
+        /// <summary>Keeps a session label usable as a file name.</summary>
+        private static string Sanitise(string label)
+        {
+            char[] invalid = Path.GetInvalidFileNameChars();
+            string cleaned = new(label.Select(c => invalid.Contains(c) || c == ' ' ? '-' : c).ToArray());
+
+            return cleaned.Trim('-').Length > 0 ? cleaned.Trim('-') : "session";
         }
 
         private void CloseActiveSession()
@@ -806,6 +974,7 @@ namespace XCENA_Terminal_Dev
                 UpdateStatusSession();
                 UpdateStatusNetwork();
                 UpdateStatusFont();
+                UpdateStatusLog();
             };
             _imeTimer.Start();
 
@@ -1168,6 +1337,23 @@ namespace XCENA_Terminal_Dev
         /// The status bar carries the state of the session in front of you: an automation this
         /// quiet has to be visible, and it is now per session, so the readout follows the tab.
         /// </summary>
+        /// <summary>
+        /// A session being recorded says so, with the file name: a log running unnoticed is how you
+        /// end up with a console transcript you did not know you were keeping.
+        /// </summary>
+        private void UpdateStatusLog()
+        {
+            string? path = _surface.ActiveView?.LogPath;
+
+            StatusLog.Visibility = path is null ? Visibility.Collapsed : Visibility.Visible;
+
+            string text = path is null ? string.Empty : $"log → {Path.GetFileName(path)}";
+            if (StatusLog.Text != text)
+            {
+                StatusLog.Text = text;
+            }
+        }
+
         private void UpdateStatusAutoApprove()
         {
             bool on = _surface.ActiveView?.AutoApprove == true;

@@ -8,6 +8,18 @@ using XCENA_Terminal_Dev.Models;
 namespace XCENA_Terminal_Dev.Services
 {
     /// <summary>
+    /// The port is held by something else. Kept distinct so it is never retried in a loop: waiting
+    /// for another program to let go is the user's call, not the app's.
+    /// </summary>
+    internal sealed class PortInUseException : Exception
+    {
+        public PortInUseException(string message)
+            : base(message)
+        {
+        }
+    }
+
+    /// <summary>
     /// A serial console: the same byte pump as an SSH shell, over a COM port. Differences that
     /// matter are all here — there is no PTY to resize, nothing to identify the far end with, and
     /// an unplugged adapter reports itself by throwing on read rather than closing politely.
@@ -72,6 +84,15 @@ namespace XCENA_Terminal_Dev.Services
             try
             {
                 port.Open();
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // The usual cause by far, and the platform message ("Access to the path 'COM3' is
+                // denied") says nothing about why. Name the real reason instead.
+                port.Dispose();
+                throw new PortInUseException(
+                    $"{_settings.PortName} is already open in another program. "
+                    + "Close the other terminal, or unplug and replug the adapter if nothing seems to hold it.");
             }
             catch (Exception)
             {
@@ -145,6 +166,39 @@ namespace XCENA_Terminal_Dev.Services
         /// <summary>A serial line has no window size to report.</summary>
         public void Resize(uint columns, uint rows)
         {
+        }
+
+        public bool SupportsBreak => true;
+
+        /// <summary>
+        /// Holds the line low for a quarter second — long enough for the far end to see a break,
+        /// short enough not to look like a disconnect.
+        /// </summary>
+        public void SendBreak()
+        {
+            SerialPort? port;
+            lock (_gate)
+            {
+                port = _port;
+            }
+
+            if (port is null || !port.IsOpen)
+            {
+                return;
+            }
+
+            try
+            {
+                port.BreakState = true;
+                Thread.Sleep(250);
+                port.BreakState = false;
+                Notice?.Invoke(this, "[break sent]\n");
+            }
+            catch (Exception ex) when (ex is IOException or InvalidOperationException
+                                          or UnauthorizedAccessException or NotSupportedException)
+            {
+                Notice?.Invoke(this, $"[break failed: {ex.Message}]\n");
+            }
         }
 
         private void ReadLoop()

@@ -42,5 +42,14 @@ namespace XCENA_Terminal_Dev.Services
 
         /// <summary>Tells the far end the window changed size. A no-op where there is no PTY.</summary>
         void Resize(uint columns, uint rows);
+
+        /// <summary>Whether a break can be sent — a serial thing, and the reason this is asked.</summary>
+        bool SupportsBreak { get; }
+
+        /// <summary>
+        /// Holds the line in the break state briefly. On a board console this is what drops into
+        /// the boot loader or a kernel debugger, so it is never sent by accident.
+        /// </summary>
+        void SendBreak();
     }
 }

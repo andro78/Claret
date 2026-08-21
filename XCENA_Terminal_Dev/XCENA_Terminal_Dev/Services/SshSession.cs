@@ -242,6 +242,13 @@ namespace XCENA_Terminal_Dev.Services
         }
 
         /// <summary>Sends a window-change request so the remote PTY matches the visible grid.</summary>
+        /// <summary>SSH has a break request, but nothing in this app needs it; serial does.</summary>
+        public bool SupportsBreak => false;
+
+        public void SendBreak()
+        {
+        }
+
         public void Resize(uint columns, uint rows)
         {
             if (columns == 0 || rows == 0)

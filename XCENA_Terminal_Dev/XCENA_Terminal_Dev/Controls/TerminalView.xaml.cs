@@ -76,6 +76,7 @@ namespace XCENA_Terminal_Dev.Controls
 
         private TaskCompletionSource<bool>? _readySource;
         private ITerminalLink? _session;
+        private SessionLog? _log;
         private ConnectionProfile? _profile;
         private SerialConnection? _serial;
         private string? _secret;
@@ -164,6 +165,43 @@ namespace XCENA_Terminal_Dev.Controls
         /// where the cable is the whole network.
         /// </summary>
         public bool HasNetwork => _profile is not null;
+
+        /// <summary>Whether a break can be sent on this link — serial only.</summary>
+        public bool SupportsBreak => _session?.SupportsBreak == true;
+
+        /// <summary>The file this session is being recorded to, or null when it is not.</summary>
+        public string? LogPath => _log?.Path;
+
+        /// <summary>
+        /// Sends a break. Console-only in practice: on a board this is what drops into the boot
+        /// loader, so it is never bound to a key — the menu is the only way to ask for it.
+        /// </summary>
+        public void SendBreak() => _session?.SendBreak();
+
+        /// <summary>
+        /// Starts recording what the session prints. Output already on screen is not in the file:
+        /// a log begins when you ask for one, and saying otherwise would be a lie about the record.
+        /// </summary>
+        public void StartLogging(string path, string header)
+        {
+            StopLogging();
+            _log = SessionLog.Open(path, header);
+            PostNotice($"[logging to {path}]\n");
+        }
+
+        public void StopLogging()
+        {
+            if (_log is null)
+            {
+                return;
+            }
+
+            string path = _log.Path;
+            _log.Dispose();
+            _log = null;
+
+            PostNotice($"[logging stopped: {path}]\n");
+        }
 
         /// <summary>Last title reported by the remote shell via OSC 0/2, if any.</summary>
         public string? RemoteTitle { get; private set; }
@@ -695,6 +733,10 @@ namespace XCENA_Terminal_Dev.Controls
 
         private void OnSessionOutput(object? sender, byte[] chunk)
         {
+            // Tee straight from the wire: what the log holds is what arrived, not what survived
+            // the terminal's own redraws.
+            _log?.Write(chunk);
+
             lock (_outputGate)
             {
                 _pendingOutput.Add(chunk);
@@ -945,6 +987,10 @@ namespace XCENA_Terminal_Dev.Controls
             StopRetryCountdown();
             _connectCts?.Cancel();
             DetachSession();
+
+            // Close the file with the session, so the log ends where the session did.
+            _log?.Dispose();
+            _log = null;
 
             if (Web.CoreWebView2 is not null)
             {

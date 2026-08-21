@@ -75,8 +75,9 @@ namespace XCENA_Terminal_Dev.Controls
         private readonly List<byte[]> _pendingOutput = new();
 
         private TaskCompletionSource<bool>? _readySource;
-        private SshSession? _session;
+        private ITerminalLink? _session;
         private ConnectionProfile? _profile;
+        private SerialConnection? _serial;
         private string? _secret;
         private CancellationTokenSource? _connectCts;
 
@@ -148,6 +149,22 @@ namespace XCENA_Terminal_Dev.Controls
 
         public ConnectionProfile? Profile => _profile;
 
+        /// <summary>The serial settings of this pane, when it is a serial console rather than SSH.</summary>
+        public SerialConnection? Serial => _serial;
+
+        /// <summary>
+        /// What to call this session in the chrome: the endpoint for SSH, the port and line
+        /// settings for a serial console. Empty before the first connect.
+        /// </summary>
+        public string SessionLabel =>
+            _profile?.Endpoint ?? _serial?.Summary ?? string.Empty;
+
+        /// <summary>
+        /// Whether there is a host on the other side to measure a round trip to. False for serial,
+        /// where the cable is the whole network.
+        /// </summary>
+        public bool HasNetwork => _profile is not null;
+
         /// <summary>Last title reported by the remote shell via OSC 0/2, if any.</summary>
         public string? RemoteTitle { get; private set; }
 
@@ -159,17 +176,39 @@ namespace XCENA_Terminal_Dev.Controls
             _profile is null ? null : (_profile, _secret);
 
         /// <summary>
-        /// Boots the WebView (if needed) and opens the SSH session. Failures are shown in the
+        /// Boots the WebView (if needed) and opens an SSH session. Failures are shown in the
         /// overlay rather than thrown, so a bad profile cannot tear down the tab.
         /// </summary>
-        public async Task ConnectAsync(ConnectionProfile profile, string? secret)
+        public Task ConnectAsync(ConnectionProfile profile, string? secret)
         {
             _profile = profile;
             _secret = secret;
+            _serial = null;
 
+            return OpenAsync(profile.Endpoint, () => new SshSession(profile, secret));
+        }
+
+        /// <summary>
+        /// Opens a serial console instead. Same terminal, same byte pump; only the link differs.
+        /// </summary>
+        public Task ConnectSerialAsync(SerialConnection settings)
+        {
+            _profile = null;
+            _secret = null;
+            _serial = settings.Clone();
+
+            return OpenAsync(_serial.Summary, () => new SerialSession(_serial));
+        }
+
+        /// <summary>
+        /// The part both links share: bring the page up, open the link, and put the terminal into
+        /// the right state — including the retry policy, which only differs in what it reconnects.
+        /// </summary>
+        private async Task OpenAsync(string label, Func<ITerminalLink> open)
+        {
             StopRetryCountdown();
             SetState(TerminalState.Connecting);
-            ShowBusy(_retryAttempt > 0 ? $"Reconnecting… (attempt {_retryAttempt})" : "Connecting…", profile.Endpoint);
+            ShowBusy(_retryAttempt > 0 ? $"Reconnecting… (attempt {_retryAttempt})" : "Connecting…", label);
 
             try
             {
@@ -182,7 +221,7 @@ namespace XCENA_Terminal_Dev.Controls
                 return;
             }
 
-            var session = new SshSession();
+            ITerminalLink session = open();
             session.OutputReceived += OnSessionOutput;
             session.Closed += OnSessionClosed;
             session.Notice += OnSessionNotice;
@@ -193,7 +232,7 @@ namespace XCENA_Terminal_Dev.Controls
 
             try
             {
-                await session.ConnectAsync(profile, secret, _columns, _rows, _connectCts.Token).ConfigureAwait(true);
+                await session.ConnectAsync(_columns, _rows, _connectCts.Token).ConfigureAwait(true);
             }
             catch (OperationCanceledException)
             {
@@ -205,8 +244,9 @@ namespace XCENA_Terminal_Dev.Controls
             {
                 DetachSession();
 
-                // A server that is still rebooting refuses connections; keep trying. Bad credentials
-                // or a changed host key never fix themselves, so those stop here.
+                // A server that is still rebooting refuses connections, and an adapter can be
+                // plugged back in; keep trying. Bad credentials or a changed host key never fix
+                // themselves, so those stop here.
                 if (_autoReconnect && IsRetryable(ex))
                 {
                     ScheduleReconnect("Connection failed", ex.Message);
@@ -222,7 +262,7 @@ namespace XCENA_Terminal_Dev.Controls
 
             if (_retryAttempt > 0)
             {
-                PostNotice($"[Reconnected to {profile.Endpoint} after {_retryAttempt} attempt(s)]\n");
+                PostNotice($"[Reconnected to {label} after {_retryAttempt} attempt(s)]\n");
             }
 
             _retryAttempt = 0;
@@ -242,7 +282,7 @@ namespace XCENA_Terminal_Dev.Controls
         /// Asks the session what it is talking to and publishes the answer. Silent on failure —
         /// the tab simply keeps the generic icon.
         /// </summary>
-        private async Task IdentifyPlatformAsync(SshSession session)
+        private async Task IdentifyPlatformAsync(ITerminalLink session)
         {
             CancellationToken token = _connectCts?.Token ?? CancellationToken.None;
 
@@ -802,14 +842,22 @@ namespace XCENA_Terminal_Dev.Controls
 
         private async Task ReconnectAsync()
         {
-            if (_profile is null || _shuttingDown)
+            if (_shuttingDown)
             {
                 return;
             }
 
             DetachSession();
-            await ConnectAsync(_profile, _secret);
+            await ReopenAsync();
         }
+
+        /// <summary>Opens whichever link this pane was using, SSH or serial.</summary>
+        private Task ReopenAsync() => (_profile, _serial) switch
+        {
+            ({ } profile, _) => ConnectAsync(profile, _secret),
+            (_, { } serial) => ConnectSerialAsync(serial),
+            _ => Task.CompletedTask,
+        };
 
         private void StopRetryCountdown()
         {
@@ -858,7 +906,7 @@ namespace XCENA_Terminal_Dev.Controls
 
         private async void OnRetryClick(object sender, RoutedEventArgs e)
         {
-            if (_profile is null)
+            if (_profile is null && _serial is null)
             {
                 return;
             }
@@ -867,12 +915,12 @@ namespace XCENA_Terminal_Dev.Controls
             _autoReconnect = true;
             StopRetryCountdown();
             DetachSession();
-            await ConnectAsync(_profile, _secret);
+            await ReopenAsync();
         }
 
         private void DetachSession()
         {
-            SshSession? session = _session;
+            ITerminalLink? session = _session;
             _session = null;
 
             if (session is null)

@@ -29,6 +29,7 @@ namespace XCENA_Terminal_Dev
     {
         Sessions,
         Files,
+        Serial,
         Tools,
     }
 
@@ -141,6 +142,14 @@ namespace XCENA_Terminal_Dev
             };
             _surface.ApplyHighlights(_highlightStore.Rules);
             _surface.ApplyCopyOnSelect(_layoutStore.Current.CopyOnSelect);
+
+            Serial.Initialize(_layoutStore.Current.Serial);
+            Serial.OpenRequested += (_, settings) => _ = OpenSerialAsync(settings);
+            Serial.SettingsChanged += (_, settings) =>
+            {
+                _layoutStore.Current.Serial = settings;
+                _layoutStore.Save();
+            };
             // Nothing to arm at startup: the AI auto-answer is per session and starts off.
             _surface.AutoApproved += OnSurfaceAutoApproved;
 
@@ -715,6 +724,22 @@ namespace XCENA_Terminal_Dev
             }
         }
 
+        /// <summary>
+        /// Opens a serial console in a new tab. No profile and no secret: a port needs neither, so
+        /// nothing about it is stored beyond the line settings the panel already remembers.
+        /// </summary>
+        private async Task OpenSerialAsync(SerialConnection settings)
+        {
+            SerialConnection snapshot = settings.Clone();
+            TerminalView view = _surface.AddSerialSession(snapshot);
+
+            UpdateEmptyState();
+            UpdateLayoutChrome();
+            OnActiveSessionChanged();
+
+            await _surface.StartSerialAsync(view, snapshot);
+        }
+
         private void CloseActiveSession()
         {
             if (_surface.ActiveView is { } view)
@@ -799,7 +824,7 @@ namespace XCENA_Terminal_Dev
         {
             TerminalView? view = _surface.ActiveView;
 
-            if (view is null || view.Profile is not { } profile)
+            if (view is null || view.SessionLabel.Length == 0)
             {
                 _trafficMark = null;
                 ShowNetwork(NetworkHealth.None, string.Empty, "No session");
@@ -834,6 +859,14 @@ namespace XCENA_Terminal_Dev
 
             _trafficView = view;
             _trafficMark = (elapsed, received, sent);
+
+            // A serial console has no host to ping: the lamp reports that the port is open, and
+            // the throughput in the tooltip is the only traffic there is to see.
+            if (view.Profile is not { } profile)
+            {
+                ShowNetwork(NetworkHealth.Good, string.Empty, $"{view.SessionLabel}\n{rates}");
+                return;
+            }
 
             // The ping is much slower than this tick, so it runs on its own interval and the last
             // answer is reused in between.
@@ -1009,7 +1042,10 @@ namespace XCENA_Terminal_Dev
 
             TerminalView? view = _surface.ActiveView;
             bool connected = view?.State == TerminalState.Connected;
-            string host = view?.Profile?.Endpoint ?? string.Empty;
+
+            // Where the script would run. A serial console is a shell too, so the port name serves
+            // as the destination just as an endpoint does.
+            string host = view?.SessionLabel ?? string.Empty;
 
             foreach (AiTool tool in AiTool.All)
             {
@@ -1042,7 +1078,8 @@ namespace XCENA_Terminal_Dev
 
             // Says what it does in full: this answers a prompt whose whole purpose was to ask.
             // Per session, because arming it is a decision about the task in front of you.
-            bool blocked = host.Length > 0 && IsAutoApproveBlocked(view!.Profile!.Host);
+            // Only an SSH host can be on the block list; a serial console has no host to name.
+            bool blocked = view?.Profile is { } current && IsAutoApproveBlocked(current.Host);
 
             var auto = new ToggleMenuFlyoutItem
             {
@@ -1148,15 +1185,20 @@ namespace XCENA_Terminal_Dev
         private async Task InstallAiToolAsync(AiTool tool)
         {
             TerminalView? view = _surface.ActiveView;
-            if (view?.State != TerminalState.Connected || view.Profile is not { } profile)
+            if (view?.State != TerminalState.Connected || view.SessionLabel.Length == 0)
             {
                 return;
             }
 
+            // Say where it lands: a host and account for SSH, the port for a serial console.
+            string where = view.Profile is { } profile
+                ? $"Runs on {profile.Endpoint} as {profile.Username}:"
+                : $"Runs on whatever is attached to {view.SessionLabel}:";
+
             var body = new StackPanel { Spacing = 10 };
             body.Children.Add(new TextBlock
             {
-                Text = $"Runs on {profile.Endpoint} as {profile.Username}:",
+                Text = where,
                 TextWrapping = TextWrapping.Wrap,
             });
             body.Children.Add(new TextBlock
@@ -1205,7 +1247,7 @@ namespace XCENA_Terminal_Dev
             TerminalView? view = _surface.ActiveView;
 
             string text;
-            if (view?.Profile is not { } profile)
+            if (view is null || view.SessionLabel.Length == 0)
             {
                 text = "No open sessions";
             }
@@ -1217,7 +1259,9 @@ namespace XCENA_Terminal_Dev
                         : RemotePlatform.Describe(view.Platform.Os)
                     : string.Empty;
 
-                text = platform.Length > 0 ? $"{profile.Endpoint}  ·  {platform}" : profile.Endpoint;
+                text = platform.Length > 0
+                    ? $"{view.SessionLabel}  ·  {platform}"
+                    : view.SessionLabel;
             }
 
             if (StatusSession.Text != text)
@@ -1255,6 +1299,8 @@ namespace XCENA_Terminal_Dev
         private void OnSessionsTabClick(object sender, RoutedEventArgs e) => ClickSidebarTab(SidebarTab.Sessions);
 
         private void OnFilesTabClick(object sender, RoutedEventArgs e) => ClickSidebarTab(SidebarTab.Files);
+
+        private void OnSerialTabClick(object sender, RoutedEventArgs e) => ClickSidebarTab(SidebarTab.Serial);
 
         private void OnToolsTabClick(object sender, RoutedEventArgs e) => ClickSidebarTab(SidebarTab.Tools);
 
@@ -1294,6 +1340,7 @@ namespace XCENA_Terminal_Dev
             // "New connection" lives inside the profile card, so hiding the card hides it too.
             ProfileCard.Visibility = Show(tab == SidebarTab.Sessions);
             FilesCard.Visibility = Show(tab == SidebarTab.Files);
+            SerialCard.Visibility = Show(tab == SidebarTab.Serial);
             ToolsCard.Visibility = Show(tab == SidebarTab.Tools);
 
             var accent = AppAccent.Brush();
@@ -1303,10 +1350,12 @@ namespace XCENA_Terminal_Dev
 
             SessionsTabMarker.Background = tab == SidebarTab.Sessions ? accent : clear;
             FilesTabMarker.Background = tab == SidebarTab.Files ? accent : clear;
+            SerialTabMarker.Background = tab == SidebarTab.Serial ? accent : clear;
             ToolsTabMarker.Background = tab == SidebarTab.Tools ? accent : clear;
 
             SessionsTabIcon.Foreground = tab == SidebarTab.Sessions ? bright : dim;
             FilesTabIcon.Foreground = tab == SidebarTab.Files ? bright : dim;
+            SerialTabIcon.Foreground = tab == SidebarTab.Serial ? bright : dim;
             ToolsTabIcon.Foreground = tab == SidebarTab.Tools ? bright : dim;
 
             if (tab == SidebarTab.Files)
@@ -1338,7 +1387,7 @@ namespace XCENA_Terminal_Dev
             TerminalView? view = _surface.ActiveView;
             AppTitleText.Text = view is null
                 ? string.Empty
-                : view.RemoteTitle ?? view.Profile?.Endpoint ?? string.Empty;
+                : view.RemoteTitle ?? view.SessionLabel;
         }
 
         /// <summary>

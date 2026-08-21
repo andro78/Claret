@@ -83,7 +83,14 @@ namespace XCENA_Terminal_Dev.Controls
         /// Creates a tab in the active pane without connecting, so it is on screen before the SSH
         /// handshake begins.
         /// </summary>
-        public TerminalView AddSession(ConnectionProfile profile)
+        public TerminalView AddSession(ConnectionProfile profile) =>
+            AddPane(profile.DisplayName, profile.Endpoint);
+
+        /// <summary>The same, for a serial console: a port and its line settings instead of a host.</summary>
+        public TerminalView AddSerialSession(SerialConnection settings) =>
+            AddPane(settings.DisplayName, settings.Summary);
+
+        private TerminalView AddPane(string header, string tooltip)
         {
             PaneLeafNode leaf = _active ?? EnsureRootLeaf();
 
@@ -96,11 +103,11 @@ namespace XCENA_Terminal_Dev.Controls
 
             var tab = new TabViewItem
             {
-                Header = profile.DisplayName,
+                Header = header,
                 Content = view,
                 IconSource = new SymbolIconSource { Symbol = Symbol.Sync },
             };
-            ToolTipService.SetToolTip(tab, profile.Endpoint);
+            ToolTipService.SetToolTip(tab, tooltip);
             tab.ContextFlyout = BuildTabMenu(view);
 
             leaf.Group.Add(tab);
@@ -125,6 +132,13 @@ namespace XCENA_Terminal_Dev.Controls
         public async Task StartAsync(TerminalView view, ConnectionProfile profile, string? secret)
         {
             await view.ConnectAsync(profile, secret);
+            RefreshChrome();
+            ActiveSessionChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        public async Task StartSerialAsync(TerminalView view, SerialConnection settings)
+        {
+            await view.ConnectSerialAsync(settings);
             RefreshChrome();
             ActiveSessionChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -735,6 +749,7 @@ namespace XCENA_Terminal_Dev.Controls
                     // every other state is about the connection itself, so it keeps its own icon.
                     tab.IconSource = view.State switch
                     {
+                        TerminalState.Connected when view.Serial is not null => PlatformIcon.Serial(),
                         TerminalState.Connected =>
                             PlatformIcon.For(view.Platform.Os) ?? Symbolic(Symbol.Globe),
                         TerminalState.Connecting => Symbolic(Symbol.Sync),

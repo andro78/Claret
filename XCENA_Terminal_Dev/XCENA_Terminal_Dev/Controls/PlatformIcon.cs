@@ -15,6 +15,12 @@ namespace XCENA_Terminal_Dev.Controls
     {
         private const string EmojiFont = "Segoe UI Emoji";
 
+        /// <summary>
+        /// A serial console. Nothing identifies the far end of a cable, so the icon says what the
+        /// link is instead of what is on it — and matches the rail icon that opened it.
+        /// </summary>
+        public static IconSource Serial() => new FontIconSource { Glyph = "", FontSize = 14 };
+
         /// <summary>An icon for the platform, or null when there is nothing better than the globe.</summary>
         public static IconSource? For(RemoteOs os) => os switch
         {

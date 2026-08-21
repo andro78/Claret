@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using XCENA_Terminal_Dev.Models;
 
 namespace XCENA_Terminal_Dev.Services
 {
@@ -28,6 +29,13 @@ namespace XCENA_Terminal_Dev.Services
         /// is the one that should need repeating, and the safe one the one that should stick.
         /// </summary>
         public List<string> AutoApproveBlockedHosts { get; set; } = new();
+
+        /// <summary>
+        /// Line settings the serial panel opens ports with. Remembered without the port name: the
+        /// baud rate is a property of the board you talk to, the COM number is an accident of which
+        /// USB socket the adapter went into.
+        /// </summary>
+        public SerialConnection Serial { get; set; } = new();
 
         /// <summary>
         /// Where downloads are saved without asking. Empty means "show the save dialog every time",

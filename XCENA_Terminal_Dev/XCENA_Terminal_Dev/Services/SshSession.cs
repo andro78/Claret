@@ -26,11 +26,13 @@ namespace XCENA_Terminal_Dev.Services
     /// One interactive SSH shell: connection, PTY, and the byte pump between the socket and the UI.
     /// All events are raised on background threads — callers must marshal to the UI thread themselves.
     /// </summary>
-    internal sealed class SshSession : IDisposable
+    internal sealed class SshSession : ITerminalLink
     {
         private const int ReadBufferSize = 32 * 1024;
 
         private readonly object _gate = new();
+        private readonly ConnectionProfile _profile;
+        private readonly string? _secret;
 
         private long _bytesReceived;
         private long _bytesSent;
@@ -40,6 +42,14 @@ namespace XCENA_Terminal_Dev.Services
         private Task? _readerTask;
         private int _closedRaised;
         private bool _disposed;
+
+        /// <param name="profile">Where to connect. Held so the link can be opened without it again.</param>
+        /// <param name="secret">Password or key passphrase, kept in memory only.</param>
+        public SshSession(ConnectionProfile profile, string? secret)
+        {
+            _profile = profile;
+            _secret = secret;
+        }
 
         /// <summary>Raw bytes received from the shell. The array is owned by the handler.</summary>
         public event EventHandler<byte[]>? OutputReceived;
@@ -77,16 +87,12 @@ namespace XCENA_Terminal_Dev.Services
         /// Opens the connection and starts the read pump. Throws on authentication, host key,
         /// or network failure; the caller is expected to surface the message.
         /// </summary>
-        public async Task ConnectAsync(
-            ConnectionProfile profile,
-            string? secret,
-            uint columns,
-            uint rows,
-            CancellationToken cancellationToken)
+        public async Task ConnectAsync(uint columns, uint rows, CancellationToken cancellationToken)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
 
-            ConnectionInfo connectionInfo = SshConnectionFactory.Build(profile, secret);
+            ConnectionProfile profile = _profile;
+            ConnectionInfo connectionInfo = SshConnectionFactory.Build(profile, _secret);
             var client = new SshClient(connectionInfo);
             HostKeyGate hostKey = SshConnectionFactory.GuardHostKey(
                 client, profile, line => Notice?.Invoke(this, line));

@@ -243,6 +243,26 @@
                             </Grid>
                         </Button>
 
+                        <!-- Serial consoles: a COM port is a session too, just over a cable. -->
+                        <Button x:Name="SerialTabButton"
+                                Width="34"
+                                Height="36"
+                                Padding="0"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                ToolTipService.ToolTip="Serial ports"
+                                Click="OnSerialTabClick">
+                            <Grid Width="34" Height="36">
+                                <Border x:Name="SerialTabMarker"
+                                        Width="3"
+                                        Height="18"
+                                        CornerRadius="2"
+                                        HorizontalAlignment="Left"
+                                        VerticalAlignment="Center" />
+                                <FontIcon x:Name="SerialTabIcon" Glyph="&#xE964;" FontSize="16" />
+                            </Grid>
+                        </Button>
+
                         <Button x:Name="ToolsTabButton"
                                 Width="34"
                                 Height="36"
@@ -370,6 +390,20 @@
                         <ThemeShadow />
                     </Border.Shadow>
                     <local2:RemoteFilesView x:Name="Files" />
+                </Border>
+
+                <Border x:Name="SerialCard"
+                        Padding="2"
+                        Visibility="Collapsed"
+                        Background="{ThemeResource LayerFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Translation="0,0,28">
+                    <Border.Shadow>
+                        <ThemeShadow />
+                    </Border.Shadow>
+                    <local2:SerialPortsView x:Name="Serial" />
                 </Border>
 
                 <Border x:Name="ToolsCard"

@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 namespace XCENA_Terminal_Dev.Services
 {
     /// <summary>
-    /// Disposes SSH sessions off the UI thread.
+    /// Disposes terminal links off the UI thread.
     /// <para>
     /// SSH.NET's teardown is synchronous and can block for seconds: it sends a disconnect message
     /// and joins its message-listener thread, and on a dead or laggy link that wait runs to a
@@ -19,7 +19,7 @@ namespace XCENA_Terminal_Dev.Services
         private static readonly object Gate = new();
         private static readonly List<Task> Pending = new();
 
-        public static void DisposeInBackground(SshSession session)
+        public static void DisposeInBackground(IDisposable session)
         {
             Task task = Task.Run(() =>
             {

@@ -41,7 +41,7 @@ namespace XCENA_Terminal_Dev.Controls
             // is what separates the cards — no drawn borders needed. The padding keeps the outer
             // cards from butting against the window edges.
             Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-            Padding = new Thickness(4, 0, 8, 8);
+            Padding = new Thickness(2, 0, 8, 8);
         }
 
         /// <summary>Window-level chords (sidebar) that bubble out of a pane.</summary>

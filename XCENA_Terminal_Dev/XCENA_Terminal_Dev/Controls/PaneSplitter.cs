@@ -18,7 +18,7 @@ namespace XCENA_Terminal_Dev.Controls
         private const double MinimumPaneSize = 80;
 
         /// <summary>Also the gap between cards, so it doubles as the visual separation.</summary>
-        public const double Thickness = 10;
+        public const double Thickness = 5;
 
         /// <summary>
         /// Invisible at rest: the gap it occupies already separates the cards, and a painted bar

@@ -407,8 +407,12 @@ namespace XCENA_Terminal_Dev
 
             Grid.SetColumn(Sidebar, onRight ? 2 : 0);
             Grid.SetColumn(SessionArea, onRight ? 0 : 2);
-            Thickness margin = onRight ? new Thickness(4, 6, 8, 8) : new Thickness(8, 6, 4, 8);
+            // The edge facing the terminals is the narrow one on both sides: it already has the
+            // splitter between them, and margin plus padding plus splitter was reading as a gutter.
+            // Which edge that is depends on the dock side, so the surface follows it too.
+            Thickness margin = onRight ? new Thickness(2, 6, 8, 8) : new Thickness(8, 6, 2, 8);
             Sidebar.Margin = margin;
+            _surface.Padding = onRight ? new Thickness(8, 0, 2, 8) : new Thickness(2, 0, 8, 8);
 
             // The rail belongs on the window edge: left of the cards when docked left, right of
             // them when docked right. The Auto column travels with it.

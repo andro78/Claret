@@ -14,7 +14,7 @@ namespace XCENA_Terminal_Dev.Controls
     /// </summary>
     internal sealed class SidebarSplitter : Grid
     {
-        public const double Thickness = 10;
+        public const double Thickness = 5;
 
         // Narrower than this and the endpoint line under each profile name stops being readable.
         private const double MinimumWidth = 200;

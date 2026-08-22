@@ -1,7 +1,9 @@
 ﻿# XCENA Terminal
 
-WinUI 3 기반 SSH 터미널 클라이언트. VT100/ANSI 에뮬레이션은 WebView2에 올린 xterm.js가,
+WinUI 3 기반 SSH·시리얼 터미널 클라이언트. VT100/ANSI 에뮬레이션은 WebView2에 올린 xterm.js가,
 SSH 전송은 SSH.NET이 담당한다.
+
+쓰는 방법은 **[사용 설명서](docs/MANUAL.md)** 에 있다. 아래는 코드 구조와 빌드 방법이다.
 
 ## 구조
 

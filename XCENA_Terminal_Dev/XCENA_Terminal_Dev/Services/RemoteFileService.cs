@@ -130,6 +130,99 @@ namespace XCENA_Terminal_Dev.Services
                 .ToList();
         }
 
+        /// <summary>
+        /// Walks a remote directory for a recursive download: every directory and file under it,
+        /// each with its path relative to the root, parents before their contents. Symlinks are
+        /// counted and left alone — a link pointing back up the tree would walk for ever — and the
+        /// walk stops at <see cref="FolderScan.MaxItems"/> rather than growing without a bound.
+        /// </summary>
+        public async Task<ScanResult> WalkAsync(string root, CancellationToken cancellationToken)
+        {
+            SftpClient client = Client();
+
+            var items = new List<ScanItem>();
+            var pending = new Queue<(string Path, string Relative)>();
+            int skipped = 0;
+
+            pending.Enqueue((root, string.Empty));
+
+            while (pending.Count > 0)
+            {
+                (string path, string relative) = pending.Dequeue();
+
+                await foreach (ISftpFile file in client
+                    .ListDirectoryAsync(path, cancellationToken)
+                    .ConfigureAwait(false))
+                {
+                    if (file.Name is "." or "..")
+                    {
+                        continue;
+                    }
+
+                    if (items.Count >= FolderScan.MaxItems)
+                    {
+                        return new ScanResult(items, skipped, Truncated: true);
+                    }
+
+                    string childRelative = relative.Length == 0 ? file.Name : relative + "/" + file.Name;
+
+                    if (file.IsSymbolicLink)
+                    {
+                        skipped++;
+                        continue;
+                    }
+
+                    if (file.IsDirectory)
+                    {
+                        items.Add(new ScanItem(file.FullName, childRelative, IsDirectory: true, Length: 0));
+                        pending.Enqueue((file.FullName, childRelative));
+                        continue;
+                    }
+
+                    items.Add(new ScanItem(file.FullName, childRelative, IsDirectory: false, file.Length));
+                }
+            }
+
+            return new ScanResult(items, skipped, Truncated: false);
+        }
+
+        /// <summary>
+        /// Creates a remote directory, and any parent still missing above it. An upload of a folder
+        /// tree calls this per directory, so a path that is already there has to be no error.
+        /// </summary>
+        public async Task EnsureDirectoryAsync(string path, CancellationToken cancellationToken)
+        {
+            SftpClient client = Client();
+
+            string[] parts = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            string walked = path.StartsWith('/') ? string.Empty : ".";
+
+            foreach (string part in parts)
+            {
+                walked = walked.Length == 0 ? "/" + part : walked + "/" + part;
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (await ExistsAsync(walked, cancellationToken).ConfigureAwait(false))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    await client.CreateDirectoryAsync(walked, cancellationToken).ConfigureAwait(false);
+                }
+                catch (SshException)
+                {
+                    // Another transfer, or the server itself, may have created it in between. Only
+                    // a directory that is still missing afterwards is a real failure.
+                    if (!await ExistsAsync(walked, cancellationToken).ConfigureAwait(false))
+                    {
+                        throw;
+                    }
+                }
+            }
+        }
+
         /// <summary>True when something already occupies <paramref name="path"/>.</summary>
         public async Task<bool> ExistsAsync(string path, CancellationToken cancellationToken)
         {

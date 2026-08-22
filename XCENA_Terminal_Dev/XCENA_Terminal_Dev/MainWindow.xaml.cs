@@ -1599,12 +1599,20 @@ namespace XCENA_Terminal_Dev
             bool idle = live && !Files.IsTransferring;
 
             SftpUploadItem.IsEnabled = idle;
+            SftpUploadFolderItem.IsEnabled = idle;
             SftpDownloadItem.IsEnabled = idle && Files.CanDownload;
+            SftpDownloadTreeItem.IsEnabled = idle && Files.CanDownloadFolder;
             SftpRefreshItem.IsEnabled = live;
 
             SftpDownloadItem.Text = Files.ShowFiles
                 ? "Download selected file…"
                 : "Download selected file… (turn on Show files)";
+
+            // A folder copy is recursive, so it says so: the count is what tells you it is not one
+            // directory's worth of files.
+            SftpDownloadTreeItem.Text = Files.CanDownloadFolder
+                ? "Download selected folder, with everything in it…"
+                : "Download selected folder… (select a folder)";
 
             string folder = _layoutStore.Current.DownloadFolder;
             SftpDownloadFolderItem.Text = folder.Length > 0
@@ -1676,10 +1684,22 @@ namespace XCENA_Terminal_Dev
             await Files.PickAndUploadAsync();
         }
 
+        private async void OnSftpUploadFolderClick(object sender, RoutedEventArgs e)
+        {
+            SelectSidebarTab(SidebarTab.Files);
+            await Files.PickAndUploadFolderAsync();
+        }
+
         private async void OnSftpDownloadClick(object sender, RoutedEventArgs e)
         {
             SelectSidebarTab(SidebarTab.Files);
             await Files.DownloadSelectedAsync();
+        }
+
+        private async void OnSftpDownloadTreeClick(object sender, RoutedEventArgs e)
+        {
+            SelectSidebarTab(SidebarTab.Files);
+            await Files.DownloadSelectedFolderAsync();
         }
 
         private async void OnSftpRefreshClick(object sender, RoutedEventArgs e)

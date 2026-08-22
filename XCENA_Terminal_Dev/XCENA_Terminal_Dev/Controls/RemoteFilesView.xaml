@@ -157,9 +157,19 @@
                                         <FontIcon Glyph="&#xE896;" />
                                     </MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
+                                <MenuFlyoutItem Text="Download this folder…" Tag="folder" Click="OnDownloadFolderClick">
+                                    <MenuFlyoutItem.Icon>
+                                        <FontIcon Glyph="&#xE8DE;" />
+                                    </MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
                                 <MenuFlyoutItem Text="Upload files here…" Tag="folder" Click="OnUploadHereClick">
                                     <MenuFlyoutItem.Icon>
                                         <FontIcon Glyph="&#xE898;" />
+                                    </MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem Text="Upload a folder here…" Tag="folder" Click="OnUploadFolderHereClick">
+                                    <MenuFlyoutItem.Icon>
+                                        <FontIcon Glyph="&#xE8F4;" />
                                     </MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
                                 <MenuFlyoutSeparator Tag="both" />

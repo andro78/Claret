@@ -444,6 +444,12 @@ namespace XCENA_Terminal_Dev.Controls
         private async void OnUploadHereClick(object sender, RoutedEventArgs e) =>
             await UploadFromPickerAsync();
 
+        private async void OnDownloadFolderClick(object sender, RoutedEventArgs e) =>
+            await DownloadSelectedFolderAsync();
+
+        private async void OnUploadFolderHereClick(object sender, RoutedEventArgs e) =>
+            await PickAndUploadFolderAsync();
+
         private void OnCopyPathClick(object sender, RoutedEventArgs e)
         {
             if (MenuTarget is not { } entry)
@@ -705,7 +711,7 @@ namespace XCENA_Terminal_Dev.Controls
             string target = TargetDirectory(Tree.SelectedNode);
 
             var paths = new List<string>();
-            int folders = 0;
+            var folders = new List<string>();
 
             // The data view stops being readable once the handler returns, hence the deferral.
             var deferral = e.GetDeferral();
@@ -717,9 +723,9 @@ namespace XCENA_Terminal_Dev.Controls
                     {
                         paths.Add(file.Path);
                     }
-                    else
+                    else if (item is StorageFolder folder)
                     {
-                        folders++;
+                        folders.Add(folder.Path);
                     }
                 }
             }
@@ -733,15 +739,23 @@ namespace XCENA_Terminal_Dev.Controls
                 deferral.Complete();
             }
 
-            if (paths.Count == 0)
+            if (paths.Count == 0 && folders.Count == 0)
             {
-                ShowTransfer(
-                    folders > 0 ? "Folders cannot be uploaded yet — drop files instead." : "Nothing to upload.",
-                    null);
+                ShowTransfer("Nothing to upload.", null);
                 return;
             }
 
-            await UploadAsync(paths, target);
+            if (paths.Count > 0)
+            {
+                await UploadAsync(paths, target);
+            }
+
+            // One folder at a time: each is measured, may ask about replacing, and owns the progress
+            // bar while it runs. Dropping three of them queues them rather than interleaving them.
+            foreach (string folder in folders)
+            {
+                await UploadFolderAsync(folder, target);
+            }
         }
 
         private async Task UploadAsync(IReadOnlyList<string> localPaths, string targetDirectory)
@@ -852,6 +866,423 @@ namespace XCENA_Terminal_Dev.Controls
             {
                 await RefreshDirectoryAsync(targetDirectory);
             }
+        }
+
+        // ---------- folders, recursively ----------
+
+        /// <summary>Whether the selection is a folder this could take a whole copy of.</summary>
+        public bool CanDownloadFolder =>
+            Tree.SelectedNode?.Content is RemoteEntry { IsDirectory: true, IsError: false };
+
+        /// <summary>Picks a local folder and copies all of it into the selected remote directory.</summary>
+        public async Task PickAndUploadFolderAsync()
+        {
+            if (!IsLive || _transfer is not null)
+            {
+                return;
+            }
+
+            string? local;
+            try
+            {
+                var picker = new FolderPicker { SuggestedStartLocation = PickerLocationId.ComputerFolder };
+                picker.FileTypeFilter.Add("*");
+                WinRT.Interop.InitializeWithWindow.Initialize(picker, WindowHandle);
+
+                StorageFolder? folder = await picker.PickSingleFolderAsync();
+                local = folder?.Path;
+            }
+            catch (Exception ex)
+            {
+                ShowTransfer($"Cannot open the folder picker: {ex.Message}", null);
+                return;
+            }
+
+            if (string.IsNullOrEmpty(local))
+            {
+                return;
+            }
+
+            await UploadFolderAsync(local, TargetDirectory(Tree.SelectedNode));
+        }
+
+        /// <summary>
+        /// Copies a local folder and everything under it to the far end, keeping the shape of the
+        /// tree. The whole thing is measured first: a progress bar that cannot say how much is left
+        /// is no better than a spinner, and the count is also how the transfer is refused when the
+        /// folder turns out to be enormous.
+        /// </summary>
+        public async Task UploadFolderAsync(string localRoot, string targetDirectory)
+        {
+            if (_session is not { } session || _transfer is not null)
+            {
+                return;
+            }
+
+            string name = new DirectoryInfo(localRoot).Name;
+            if (name.Length == 0)
+            {
+                ShowTransfer("A whole drive cannot be uploaded — pick a folder inside it.", null);
+                return;
+            }
+
+            RemoteFileService service;
+            try
+            {
+                service = await GetServiceAsync(session, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                ShowTransfer(Describe(ex), null);
+                return;
+            }
+
+            ShowTransfer($"Reading {name}…", null);
+            ScanResult scan = await Task.Run(() => FolderScan.Local(localRoot));
+
+            if (scan.Truncated)
+            {
+                ShowTransfer(
+                    $"{name} holds more than {FolderScan.MaxItems} items — upload a smaller folder.",
+                    null);
+                return;
+            }
+
+            if (scan.FileCount == 0 && scan.DirectoryCount == 0)
+            {
+                ShowTransfer($"{name} is empty.", null);
+                return;
+            }
+
+            string remoteRoot = Combine(targetDirectory, name);
+
+            OverwriteChoice policy = OverwriteChoice.All;
+            if (await service.ExistsAsync(remoteRoot, CancellationToken.None))
+            {
+                if (await AskFolderOverwriteAsync(name, remoteRoot) is not { } chosen)
+                {
+                    return;
+                }
+
+                policy = chosen;
+            }
+
+            var cts = new CancellationTokenSource();
+            _transfer = cts;
+            UploadButton.IsEnabled = false;
+
+            long sent = 0;
+            int done = 0;
+            int skipped = 0;
+            int failed = 0;
+            string? failure = null;
+
+            try
+            {
+                await service.EnsureDirectoryAsync(remoteRoot, cts.Token);
+
+                foreach (ScanItem item in scan.Items)
+                {
+                    cts.Token.ThrowIfCancellationRequested();
+                    string remote = remoteRoot + "/" + item.Relative;
+
+                    if (item.IsDirectory)
+                    {
+                        await service.EnsureDirectoryAsync(remote, cts.Token);
+                        continue;
+                    }
+
+                    if (policy == OverwriteChoice.Skip && await service.ExistsAsync(remote, cts.Token))
+                    {
+                        skipped++;
+                        sent += item.Length;
+                        continue;
+                    }
+
+                    long baseline = sent;
+                    string label = $"{done + skipped + 1}/{scan.FileCount} — {item.Relative}";
+                    ShowTransfer($"Uploading {label}", Fraction(baseline, scan.TotalBytes));
+
+                    var progress = new Progress<ulong>(bytes => ShowTransfer(
+                        $"Uploading {label}",
+                        Fraction(baseline + (long)bytes, scan.TotalBytes)));
+
+                    try
+                    {
+                        await service.UploadAsync(item.FullPath, remote, overwrite: true, progress, cts.Token);
+                        done++;
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        // One unreadable file should not throw away the rest of the tree.
+                        failed++;
+                    }
+
+                    sent = baseline + item.Length;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                failure = $"Upload cancelled after {done} of {scan.FileCount} files.";
+            }
+            catch (Exception ex)
+            {
+                failure = Describe(ex);
+            }
+            finally
+            {
+                _transfer = null;
+                cts.Dispose();
+                SetNavigationEnabled(IsLive);
+            }
+
+            ShowTransfer(
+                failure ?? $"Uploaded {name} to {targetDirectory} — {Tally(done, skipped, failed, scan)}",
+                failure is null && done > 0 ? 1 : null);
+
+            if (done > 0)
+            {
+                await RefreshDirectoryAsync(targetDirectory);
+            }
+        }
+
+        /// <summary>Copies the selected remote folder, and everything under it, to a local folder.</summary>
+        public async Task DownloadSelectedFolderAsync()
+        {
+            if (!IsLive
+                || _transfer is not null
+                || _session is not { } session
+                || Tree.SelectedNode?.Content is not RemoteEntry { IsDirectory: true, IsError: false } entry)
+            {
+                return;
+            }
+
+            if (await ResolveFolderDestinationAsync() is not { } destination)
+            {
+                return;
+            }
+
+            RemoteFileService service;
+            try
+            {
+                service = await GetServiceAsync(session, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                ShowTransfer(Describe(ex), null);
+                return;
+            }
+
+            ShowTransfer($"Reading {entry.Name}…", null);
+
+            ScanResult scan;
+            try
+            {
+                scan = await service.WalkAsync(entry.FullPath, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                ShowTransfer(Describe(ex), null);
+                return;
+            }
+
+            if (scan.Truncated)
+            {
+                ShowTransfer(
+                    $"{entry.Name} holds more than {FolderScan.MaxItems} items — download a subfolder instead.",
+                    null);
+                return;
+            }
+
+            if (scan.FileCount == 0 && scan.DirectoryCount == 0)
+            {
+                ShowTransfer($"{entry.Name} is empty.", null);
+                return;
+            }
+
+            string localRoot = Path.Combine(destination, entry.Name);
+
+            OverwriteChoice policy = OverwriteChoice.All;
+            if (Directory.Exists(localRoot))
+            {
+                if (await AskFolderOverwriteAsync(entry.Name, localRoot) is not { } chosen)
+                {
+                    return;
+                }
+
+                policy = chosen;
+            }
+
+            var cts = new CancellationTokenSource();
+            _transfer = cts;
+            UploadButton.IsEnabled = false;
+
+            long received = 0;
+            int done = 0;
+            int skipped = 0;
+            int failed = 0;
+            string? failure = null;
+
+            try
+            {
+                Directory.CreateDirectory(localRoot);
+
+                foreach (ScanItem item in scan.Items)
+                {
+                    cts.Token.ThrowIfCancellationRequested();
+
+                    // The relative path is POSIX; on this side it has to become a Windows one.
+                    string local = Path.Combine(localRoot, item.Relative.Replace('/', Path.DirectorySeparatorChar));
+
+                    if (item.IsDirectory)
+                    {
+                        Directory.CreateDirectory(local);
+                        continue;
+                    }
+
+                    if (policy == OverwriteChoice.Skip && File.Exists(local))
+                    {
+                        skipped++;
+                        received += item.Length;
+                        continue;
+                    }
+
+                    Directory.CreateDirectory(Path.GetDirectoryName(local) ?? localRoot);
+
+                    long baseline = received;
+                    string label = $"{done + skipped + 1}/{scan.FileCount} — {item.Relative}";
+                    ShowTransfer($"Downloading {label}", Fraction(baseline, scan.TotalBytes));
+
+                    var progress = new Progress<ulong>(bytes => ShowTransfer(
+                        $"Downloading {label}",
+                        Fraction(baseline + (long)bytes, scan.TotalBytes)));
+
+                    try
+                    {
+                        await service.DownloadAsync(item.FullPath, local, progress, cts.Token);
+                        done++;
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        // A file the far end will not hand over, or a name this filesystem refuses.
+                        failed++;
+                    }
+
+                    received = baseline + item.Length;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                failure = $"Download cancelled after {done} of {scan.FileCount} files.";
+            }
+            catch (Exception ex)
+            {
+                failure = Describe(ex);
+            }
+            finally
+            {
+                _transfer = null;
+                cts.Dispose();
+                SetNavigationEnabled(IsLive);
+            }
+
+            ShowTransfer(
+                failure ?? $"Saved to {localRoot} — {Tally(done, skipped, failed, scan)}",
+                failure is null && done > 0 ? 1 : null);
+        }
+
+        /// <summary>
+        /// Where a folder download is written. The configured download folder is used as the parent
+        /// when there is one, since that is what it means; otherwise the user picks a parent.
+        /// </summary>
+        private async Task<string?> ResolveFolderDestinationAsync()
+        {
+            if (DownloadFolder.Length > 0)
+            {
+                try
+                {
+                    Directory.CreateDirectory(DownloadFolder);
+                    return DownloadFolder;
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    ShowTransfer($"Cannot use {DownloadFolder}: {ex.Message} — pick another folder.", null);
+                }
+            }
+
+            try
+            {
+                var picker = new FolderPicker { SuggestedStartLocation = PickerLocationId.DocumentsLibrary };
+                picker.FileTypeFilter.Add("*");
+                WinRT.Interop.InitializeWithWindow.Initialize(picker, WindowHandle);
+
+                StorageFolder? folder = await picker.PickSingleFolderAsync();
+                return folder?.Path;
+            }
+            catch (Exception ex)
+            {
+                ShowTransfer($"Cannot open the folder picker: {ex.Message}", null);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// One decision for the whole folder. Asking per file is unusable at a few hundred of them,
+        /// and answering "overwrite" three hundred times is not consent, it is fatigue.
+        /// Null means the transfer was called off.
+        /// </summary>
+        private async Task<OverwriteChoice?> AskFolderOverwriteAsync(string name, string destination)
+        {
+            var dialog = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = "Folder already exists",
+                Content = $"{destination} is already there.\n\n"
+                    + $"Files inside it with the same names as those in {name} can be replaced, "
+                    + "or left as they are. Anything else in it is untouched either way.",
+                PrimaryButtonText = "Replace files",
+                SecondaryButtonText = "Keep existing",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Close,
+            };
+
+            try
+            {
+                return await dialog.ShowAsync() switch
+                {
+                    ContentDialogResult.Primary => OverwriteChoice.All,
+                    ContentDialogResult.Secondary => OverwriteChoice.Skip,
+                    _ => null,
+                };
+            }
+            catch (Exception)
+            {
+                // Another dialog owns the root; leaving the folder alone is the safe answer.
+                return null;
+            }
+        }
+
+        /// <summary>The count at the end of a folder transfer, mentioning only what happened.</summary>
+        private static string Tally(int done, int skipped, int failed, ScanResult scan)
+        {
+            var parts = new List<string> { $"{done} file{(done == 1 ? string.Empty : "s")}" };
+
+            if (skipped > 0)
+            {
+                parts.Add($"{skipped} kept");
+            }
+
+            if (failed > 0)
+            {
+                parts.Add($"{failed} failed");
+            }
+
+            if (scan.SkippedLinks > 0)
+            {
+                parts.Add($"{scan.SkippedLinks} link{(scan.SkippedLinks == 1 ? string.Empty : "s")} skipped");
+            }
+
+            return string.Join(", ", parts);
         }
 
         private static double Fraction(long sent, long total) =>

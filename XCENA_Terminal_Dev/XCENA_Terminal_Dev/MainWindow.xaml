@@ -91,11 +91,25 @@
                                     <FontIcon Glyph="&#xE898;" />
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
+                            <MenuFlyoutItem x:Name="SftpUploadFolderItem"
+                                            Text="Upload folder…"
+                                            Click="OnSftpUploadFolderClick">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE8F4;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
                             <MenuFlyoutItem x:Name="SftpDownloadItem"
                                             Text="Download selected file…"
                                             Click="OnSftpDownloadClick">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE896;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem x:Name="SftpDownloadTreeItem"
+                                            Text="Download selected folder…"
+                                            Click="OnSftpDownloadTreeClick">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE8DE;" />
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
                             <MenuFlyoutSeparator />

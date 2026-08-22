@@ -15,48 +15,114 @@ namespace XCENA_Terminal_Dev.Controls
     {
         private const string EmojiFont = "Segoe UI Emoji";
 
+        /// <summary>The box the serial connector is drawn in before scaling. Square, ink centred.</summary>
+        private const double SerialGrid = 22;
+
         /// <summary>
         /// A serial console. Nothing identifies the far end of a cable, so the icon says what the
         /// link is instead of what is on it — and matches the rail icon that opened it.
         /// </summary>
-        public static IconSource Serial() => new PathIconSource { Data = SerialShell() };
+        public static IconSource Serial() => new PathIconSource { Data = SerialGeometry(16) };
 
         /// <summary>
-        /// Two trapezoids and three pins, even-odd so the outer pair reads as an outline — the
-        /// shell of a D-sub connector. Built here so the tab and the rail cannot drift apart.
+        /// The face of a DE-9 connector: a rounded trapezoid shell with nine pins, five over four.
+        /// Even-odd, so the two outlines read as a stroke and the pins inside the hole come back
+        /// filled.
+        /// <para>
+        /// One set of coordinates, scaled to whatever box the caller has — the rail can afford more
+        /// room than a tab strip, and two hand-kept copies of the same drawing would drift.
+        /// </para>
         /// </summary>
-        private static Geometry SerialShell()
+        public static Geometry SerialGeometry(double size)
         {
-            var shell = new GeometryGroup { FillRule = FillRule.EvenOdd };
-            shell.Children.Add(Trapezoid(1, 2, 17, 14.2, 15, 3.8));
-            shell.Children.Add(Trapezoid(2.8, 3.9, 15.2, 12.8, 13.1, 5.2));
+            double s = size / SerialGrid;
 
-            foreach (double x in new[] { 5.1, 8, 10.9 })
+            var shell = new GeometryGroup { FillRule = FillRule.EvenOdd };
+            shell.Children.Add(Shell(0.6, 4.8, 21.4, 18.0, 17.2, 4.0, 2.2, s));
+            shell.Children.Add(Shell(2.95, 6.6, 19.05, 16.64, 15.4, 5.37, 1.2, s));
+
+            foreach (double x in new[] { 5.4, 8.2, 11.0, 13.8, 16.6 })
             {
-                shell.Children.Add(new RectangleGeometry { Rect = new Rect(x, 6.9, 2, 3.1) });
+                shell.Children.Add(Pin(x, 9.5, s));
+            }
+
+            foreach (double x in new[] { 6.8, 9.6, 12.4, 15.2 })
+            {
+                shell.Children.Add(Pin(x, 12.7, s));
             }
 
             return shell;
         }
 
-        /// <summary>A four-point figure: the top edge wider than the bottom, closed.</summary>
-        private static PathGeometry Trapezoid(
-            double topLeft, double top, double topRight, double bottomRight, double bottom, double bottomLeft)
+        private static EllipseGeometry Pin(double x, double y, double scale) => new()
         {
+            Center = new Point(x * scale, y * scale),
+            RadiusX = scale,
+            RadiusY = scale,
+        };
+
+        /// <summary>
+        /// A trapezoid with rounded corners, top edge wider than the bottom. Each corner is one
+        /// quadratic through the sharp point, which at icon size is indistinguishable from an arc.
+        /// </summary>
+        private static PathGeometry Shell(
+            double topLeft,
+            double top,
+            double topRight,
+            double bottomRight,
+            double bottom,
+            double bottomLeft,
+            double radius,
+            double scale)
+        {
+            Point[] corners =
+            {
+                new(topLeft * scale, top * scale),
+                new(topRight * scale, top * scale),
+                new(bottomRight * scale, bottom * scale),
+                new(bottomLeft * scale, bottom * scale),
+            };
+
+            double r = radius * scale;
+
             var figure = new PathFigure
             {
-                StartPoint = new Point(topLeft, top),
+                // Start on the top edge, past the top-left corner's curve, so the loop below can
+                // close back onto exactly this point.
+                StartPoint = Along(corners[0], corners[1], r),
                 IsClosed = true,
                 IsFilled = true,
             };
 
-            figure.Segments.Add(new LineSegment { Point = new Point(topRight, top) });
-            figure.Segments.Add(new LineSegment { Point = new Point(bottomRight, bottom) });
-            figure.Segments.Add(new LineSegment { Point = new Point(bottomLeft, bottom) });
+            for (int i = 1; i <= corners.Length; i++)
+            {
+                Point corner = corners[i % corners.Length];
+                Point previous = corners[i - 1];
+                Point next = corners[(i + 1) % corners.Length];
+
+                figure.Segments.Add(new LineSegment { Point = Along(corner, previous, r) });
+                figure.Segments.Add(new QuadraticBezierSegment
+                {
+                    Point1 = corner,
+                    Point2 = Along(corner, next, r),
+                });
+            }
 
             var path = new PathGeometry();
             path.Figures.Add(figure);
             return path;
+        }
+
+        /// <summary>The point <paramref name="distance"/> from <paramref name="from"/> towards <paramref name="towards"/>.</summary>
+        private static Point Along(Point from, Point towards, double distance)
+        {
+            double dx = towards.X - from.X;
+            double dy = towards.Y - from.Y;
+            double length = System.Math.Sqrt((dx * dx) + (dy * dy));
+
+            return length <= distance
+                ? towards
+                : new Point(from.X + (dx / length * distance), from.Y + (dy / length * distance));
         }
 
         /// <summary>An icon for the platform, or null when there is nothing better than the globe.</summary>

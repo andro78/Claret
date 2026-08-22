@@ -260,19 +260,12 @@
                                         HorizontalAlignment="Left"
                                         VerticalAlignment="Center" />
                                 <!--
-                                    A D-sub shell: the trapezoid is what a serial connector looks
-                                    like, so the icon says "port" without needing a label. Even-odd
-                                    fill turns the two trapezoids into an outline, and the three
-                                    squares inside it read as pins.
+                                    The face of a DE-9 connector, which is what a serial port looks
+                                    like — so the icon says "port" without needing a label. The
+                                    drawing lives in PlatformIcon and is set from code, so the rail
+                                    and the session tab cannot end up with two versions of it.
                                 -->
-                                <PathIcon x:Name="SerialTabIcon"
-                                          Width="18"
-                                          Height="18"
-                                          Data="F0 M 1,2 L 17,2 L 14.2,15 L 3.8,15 Z
-                                                   M 2.8,3.9 L 15.2,3.9 L 12.8,13.1 L 5.2,13.1 Z
-                                                   M 5.1,6.9 h 2 v 3.1 h -2 Z
-                                                   M 8,6.9 h 2 v 3.1 h -2 Z
-                                                   M 10.9,6.9 h 2 v 3.1 h -2 Z" />
+                                <PathIcon x:Name="SerialTabIcon" Width="22" Height="22" />
                             </Grid>
                         </Button>
 

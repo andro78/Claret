@@ -265,6 +265,10 @@ namespace XCENA_Terminal_Dev
         /// <summary>Builds the resize divider between the panel and the sessions.</summary>
         private void SetUpSidebar()
         {
+            // The rail can afford a larger connector than a tab strip can, so it asks for its own
+            // size rather than carrying a second copy of the drawing.
+            SerialTabIcon.Data = PlatformIcon.SerialGeometry(22);
+
             _sidebarSplitter = new SidebarSplitter(
                 SidebarColumn,
                 () => _layoutStore.Current.SidebarOnRight,

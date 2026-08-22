@@ -19,7 +19,45 @@ namespace XCENA_Terminal_Dev.Controls
         /// A serial console. Nothing identifies the far end of a cable, so the icon says what the
         /// link is instead of what is on it — and matches the rail icon that opened it.
         /// </summary>
-        public static IconSource Serial() => new FontIconSource { Glyph = "", FontSize = 14 };
+        public static IconSource Serial() => new PathIconSource { Data = SerialShell() };
+
+        /// <summary>
+        /// Two trapezoids and three pins, even-odd so the outer pair reads as an outline — the
+        /// shell of a D-sub connector. Built here so the tab and the rail cannot drift apart.
+        /// </summary>
+        private static Geometry SerialShell()
+        {
+            var shell = new GeometryGroup { FillRule = FillRule.EvenOdd };
+            shell.Children.Add(Trapezoid(1.5, 4.5, 14.5, 12.8, 11.5, 3.2));
+            shell.Children.Add(Trapezoid(3.2, 6, 12.8, 11.9, 10, 4.1));
+
+            foreach (double x in new[] { 5.2, 7.3, 9.4 })
+            {
+                shell.Children.Add(new RectangleGeometry { Rect = new Rect(x, 7.4, 1.4, 1.2) });
+            }
+
+            return shell;
+        }
+
+        /// <summary>A four-point figure: the top edge wider than the bottom, closed.</summary>
+        private static PathGeometry Trapezoid(
+            double topLeft, double top, double topRight, double bottomRight, double bottom, double bottomLeft)
+        {
+            var figure = new PathFigure
+            {
+                StartPoint = new Point(topLeft, top),
+                IsClosed = true,
+                IsFilled = true,
+            };
+
+            figure.Segments.Add(new LineSegment { Point = new Point(topRight, top) });
+            figure.Segments.Add(new LineSegment { Point = new Point(bottomRight, bottom) });
+            figure.Segments.Add(new LineSegment { Point = new Point(bottomLeft, bottom) });
+
+            var path = new PathGeometry();
+            path.Figures.Add(figure);
+            return path;
+        }
 
         /// <summary>An icon for the platform, or null when there is nothing better than the globe.</summary>
         public static IconSource? For(RemoteOs os) => os switch

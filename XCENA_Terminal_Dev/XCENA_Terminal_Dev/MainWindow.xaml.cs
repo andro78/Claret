@@ -30,6 +30,7 @@ namespace XCENA_Terminal_Dev
         Sessions,
         Files,
         Serial,
+        Prompt,
         Tools,
     }
 
@@ -46,6 +47,7 @@ namespace XCENA_Terminal_Dev
         private readonly LayoutStore _layoutStore = new();
         private readonly HighlightStore _highlightStore = new();
         private readonly SerialProfileStore _serialProfileStore = new();
+        private readonly PromptHistoryStore _promptStore = new();
         private readonly SessionSurface _surface = new();
         private readonly IntPtr _windowHandle;
 
@@ -98,6 +100,7 @@ namespace XCENA_Terminal_Dev
             _layoutStore.Load();
             _highlightStore.Load();
             _serialProfileStore.Load();
+            _promptStore.Load();
 
             InitializeComponent();
 
@@ -153,6 +156,9 @@ namespace XCENA_Terminal_Dev
                 _layoutStore.Current.Serial = settings;
                 _layoutStore.Save();
             };
+            Prompt.BindHistory(_promptStore.Prompts);
+            Prompt.PromptSubmitted += OnPromptSubmitted;
+
             Serial.PinRequested += (_, settings) => _ = PinSerialAsync(settings);
             Serial.RenameRequested += (_, profile) => _ = RenameSerialAsync(profile);
             Serial.UnpinRequested += (_, profile) => _serialProfileStore.Remove(profile);
@@ -775,6 +781,35 @@ namespace XCENA_Terminal_Dev
         }
 
         /// <summary>
+        /// Hands a composed prompt to the active session as a paste, so its newlines survive and
+        /// the CLI sees one input. Send adds the Return; Insert leaves the text at the prompt to be
+        /// edited there. Only sent prompts are remembered — a draft is not an ask.
+        /// </summary>
+        private void OnPromptSubmitted(object? sender, (string Text, PromptDelivery Delivery) prompt)
+        {
+            if (_surface.ActiveView is not { State: TerminalState.Connected } view)
+            {
+                return;
+            }
+
+            view.PasteText(prompt.Text);
+
+            if (prompt.Delivery == PromptDelivery.Send)
+            {
+                view.SendInput("\r");
+                _promptStore.Record(prompt.Text);
+            }
+        }
+
+        /// <summary>Keeps the prompt panel honest about which session it would type into.</summary>
+        private void UpdatePromptTarget()
+        {
+            Prompt.ShowTarget(_surface.ActiveView is { State: TerminalState.Connected } view
+                ? view.SessionLabel
+                : null);
+        }
+
+        /// <summary>
         /// Pins the port and settings under a name. The port description is offered as the default,
         /// because "CP210x USB to UART" is a better first guess than "COM7" at what the board is.
         /// </summary>
@@ -979,6 +1014,7 @@ namespace XCENA_Terminal_Dev
                 UpdateStatusNetwork();
                 UpdateStatusFont();
                 UpdateStatusLog();
+                UpdatePromptTarget();
             };
             _imeTimer.Start();
 
@@ -1492,6 +1528,8 @@ namespace XCENA_Terminal_Dev
 
         private void OnSerialTabClick(object sender, RoutedEventArgs e) => ClickSidebarTab(SidebarTab.Serial);
 
+        private void OnPromptTabClick(object sender, RoutedEventArgs e) => ClickSidebarTab(SidebarTab.Prompt);
+
         private void OnToolsTabClick(object sender, RoutedEventArgs e) => ClickSidebarTab(SidebarTab.Tools);
 
         /// <summary>
@@ -1531,6 +1569,7 @@ namespace XCENA_Terminal_Dev
             ProfileCard.Visibility = Show(tab == SidebarTab.Sessions);
             FilesCard.Visibility = Show(tab == SidebarTab.Files);
             SerialCard.Visibility = Show(tab == SidebarTab.Serial);
+            PromptCard.Visibility = Show(tab == SidebarTab.Prompt);
             ToolsCard.Visibility = Show(tab == SidebarTab.Tools);
 
             var accent = AppAccent.Brush();
@@ -1541,11 +1580,13 @@ namespace XCENA_Terminal_Dev
             SessionsTabMarker.Background = tab == SidebarTab.Sessions ? accent : clear;
             FilesTabMarker.Background = tab == SidebarTab.Files ? accent : clear;
             SerialTabMarker.Background = tab == SidebarTab.Serial ? accent : clear;
+            PromptTabMarker.Background = tab == SidebarTab.Prompt ? accent : clear;
             ToolsTabMarker.Background = tab == SidebarTab.Tools ? accent : clear;
 
             SessionsTabIcon.Foreground = tab == SidebarTab.Sessions ? bright : dim;
             FilesTabIcon.Foreground = tab == SidebarTab.Files ? bright : dim;
             SerialTabIcon.Foreground = tab == SidebarTab.Serial ? bright : dim;
+            PromptTabIcon.Foreground = tab == SidebarTab.Prompt ? bright : dim;
             ToolsTabIcon.Foreground = tab == SidebarTab.Tools ? bright : dim;
 
             if (tab == SidebarTab.Files)

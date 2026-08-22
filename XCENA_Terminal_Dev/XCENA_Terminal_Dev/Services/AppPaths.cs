@@ -25,6 +25,8 @@ namespace XCENA_Terminal_Dev.Services
 
         public static string SerialProfilesFile => Path.Combine(DataDirectory, "serial.json");
 
+        public static string PromptsFile => Path.Combine(DataDirectory, "prompts.json");
+
         private static string CreateDataDirectory()
         {
             string root = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);

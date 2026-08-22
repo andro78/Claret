@@ -70,6 +70,8 @@ namespace XCENA_Terminal_Dev.Controls
         /// <summary>Switches files on or off and re-reads the tree, since the listing changes.</summary>
         public async Task SetShowFilesAsync(bool showFiles)
         {
+            ShowFilesButton.IsChecked = showFiles;
+
             if (ShowFiles == showFiles)
             {
                 return;
@@ -81,6 +83,20 @@ namespace XCENA_Terminal_Dev.Controls
             {
                 await LoadRootAsync();
             }
+        }
+
+        /// <summary>
+        /// Raised when the header toggle changed what the tree shows, so the shell can remember it.
+        /// The panel owns the switch; only the preference outlives this window.
+        /// </summary>
+        public event EventHandler<bool>? ShowFilesChanged;
+
+        private async void OnShowFilesClick(object sender, RoutedEventArgs e)
+        {
+            bool showFiles = ShowFilesButton.IsChecked == true;
+
+            ShowFilesChanged?.Invoke(this, showFiles);
+            await SetShowFilesAsync(showFiles);
         }
 
         /// <summary>Menu entry point: same as the header's upload button.</summary>

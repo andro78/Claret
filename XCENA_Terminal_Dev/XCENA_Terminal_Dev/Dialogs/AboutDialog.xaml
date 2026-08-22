@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="XCENA_Terminal_Dev.Dialogs.AboutDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="XCENA Terminal"
+    CloseButtonText="Close"
+    DefaultButton="Close">
+
+    <StackPanel Spacing="16" Width="400">
+
+        <TextBlock TextWrapping="Wrap"
+                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                   Text="An SSH and serial console terminal for Windows." />
+
+        <Grid ColumnSpacing="16" RowSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="Version"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <TextBlock x:Name="VersionText" Grid.Row="0" Grid.Column="1" IsTextSelectionEnabled="True" />
+
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="WebView2"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <TextBlock x:Name="WebViewText" Grid.Row="1" Grid.Column="1"
+                       TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="Running from"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <TextBlock x:Name="BaseText" Grid.Row="2" Grid.Column="1"
+                       TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+        </Grid>
+
+        <StackPanel Spacing="6">
+            <TextBlock Text="Settings and saved connections"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <TextBlock x:Name="DataText" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+            <!-- Saved passwords are the exception, and it is worth saying so where the folder is. -->
+            <TextBlock TextWrapping="Wrap"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       Text="Copying this folder carries your settings to another machine. Saved passwords do not travel: they are encrypted for this Windows account." />
+            <Button Content="Open folder" Margin="0,4,0,0" Click="OnOpenDataFolderClick" />
+        </StackPanel>
+    </StackPanel>
+</ContentDialog>

@@ -42,6 +42,16 @@
   </ItemGroup>
 
   <!--
+    The manual travels with the app, so Help → Manual works on a machine with no network and no
+    access to the repository. Link, not copy: the file in docs\ stays the only one edited.
+  -->
+  <ItemGroup>
+    <Content Include="..\..\docs\MANUAL.md" Link="docs\MANUAL.md">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <!--
     An unpackaged publish drops the compiled XAML (*.xbf) and the app resource index (*.pri)
     even though the build produces them, and without those Application.Start fails at startup
     with E_FAIL inside Microsoft.UI.Xaml.dll. Add them back to the publish item list.

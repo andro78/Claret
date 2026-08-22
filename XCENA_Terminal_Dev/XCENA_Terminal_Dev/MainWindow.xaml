@@ -44,21 +44,8 @@
                    VerticalAlignment="Center"
                    Source="ms-appx:///Assets/AppIcon.ico" />
 
-            <Button x:Name="AppearanceButton"
-                    Grid.Column="1"
-                    Width="34"
-                    Height="30"
-                    Padding="0"
-                    Margin="2,0,0,0"
-                    Background="Transparent"
-                    BorderThickness="0"
-                    ToolTipService.ToolTip="Terminal colors"
-                    Click="OnAppearanceClick">
-                <FontIcon Glyph="&#xE790;" FontSize="14" />
-            </Button>
-
             <DropDownButton x:Name="OptionsButton"
-                            Grid.Column="2"
+                            Grid.Column="1"
                             Height="30"
                             Padding="8,0"
                             Margin="2,0,0,0"
@@ -69,50 +56,22 @@
                            VerticalAlignment="Center"
                            Style="{StaticResource CaptionTextBlockStyle}" />
                 <DropDownButton.Flyout>
-                    <!-- Opening syncs the check mark and greys out what the tree cannot do yet. -->
+                    <!--
+                        Settings only. Everything that acts on the file tree — uploading,
+                        downloading, refreshing — lives in the Files panel, next to the tree it acts
+                        on; a menu at the top of the window is the wrong place to reach for it.
+                        What is left is where downloads land, and one terminal preference.
+                    -->
                     <MenuFlyout Placement="Bottom" Opening="OnOptionsOpening">
                         <!-- Mouse selection straight to the clipboard; paste is middle-click or Ctrl+V. -->
                         <ToggleMenuFlyoutItem x:Name="CopyOnSelectItem"
                                               Text="Copy on selection"
                                               Click="OnCopyOnSelectClick" />
                         <MenuFlyoutSeparator />
-                        <MenuFlyoutSubItem x:Name="SftpMenu" Text="SFTP">
+                        <MenuFlyoutSubItem x:Name="SftpMenu" Text="Downloads">
                             <MenuFlyoutSubItem.Icon>
-                                <FontIcon Glyph="&#xE8B7;" />
+                                <FontIcon Glyph="&#xE896;" />
                             </MenuFlyoutSubItem.Icon>
-                            <ToggleMenuFlyoutItem x:Name="SftpShowFilesItem"
-                                                  Text="Show files in the tree"
-                                                  Click="OnSftpShowFilesClick" />
-                            <MenuFlyoutSeparator />
-                            <MenuFlyoutItem x:Name="SftpUploadItem"
-                                            Text="Upload files…"
-                                            Click="OnSftpUploadClick">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE898;" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
-                            <MenuFlyoutItem x:Name="SftpUploadFolderItem"
-                                            Text="Upload folder…"
-                                            Click="OnSftpUploadFolderClick">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE8F4;" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
-                            <MenuFlyoutItem x:Name="SftpDownloadItem"
-                                            Text="Download selected file…"
-                                            Click="OnSftpDownloadClick">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE896;" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
-                            <MenuFlyoutItem x:Name="SftpDownloadTreeItem"
-                                            Text="Download selected folder…"
-                                            Click="OnSftpDownloadTreeClick">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE8DE;" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
-                            <MenuFlyoutSeparator />
                             <!-- Text is rewritten on Opening to show the folder currently in use. -->
                             <MenuFlyoutItem x:Name="SftpDownloadFolderItem"
                                             Text="Download folder…"
@@ -124,15 +83,45 @@
                             <MenuFlyoutItem x:Name="SftpAskEachTimeItem"
                                             Text="Ask where to save each file"
                                             Click="OnSftpAskEachTimeClick" />
-                            <MenuFlyoutSeparator />
-                            <MenuFlyoutItem x:Name="SftpRefreshItem"
-                                            Text="Refresh folder tree"
-                                            Click="OnSftpRefreshClick">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE72C;" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
                         </MenuFlyoutSubItem>
+                    </MenuFlyout>
+                </DropDownButton.Flyout>
+            </DropDownButton>
+
+            <DropDownButton x:Name="HelpButton"
+                            Grid.Column="2"
+                            Height="30"
+                            Padding="8,0"
+                            Margin="2,0,0,0"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            ToolTipService.ToolTip="Help">
+                <TextBlock Text="Help"
+                           VerticalAlignment="Center"
+                           Style="{StaticResource CaptionTextBlockStyle}" />
+                <DropDownButton.Flyout>
+                    <MenuFlyout Placement="Bottom">
+                        <MenuFlyoutItem Text="Manual" Click="OnHelpManualClick">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE8A5;" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                        <MenuFlyoutItem Text="Keyboard shortcuts" Click="OnHelpShortcutsClick">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE765;" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                        <MenuFlyoutSeparator />
+                        <MenuFlyoutItem Text="Open settings folder" Click="OnHelpDataFolderClick">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE8DA;" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                        <MenuFlyoutItem Text="About XCENA Terminal" Click="OnHelpAboutClick">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE946;" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
                     </MenuFlyout>
                 </DropDownButton.Flyout>
             </DropDownButton>
@@ -218,7 +207,10 @@
                             Grid.Column="0"
                             Background="Transparent"
                             ToolTipService.ToolTip="Click an icon to show or hide the panel · drag left or right to dock">
-                    <StackPanel Spacing="4" VerticalAlignment="Top">
+                        <!-- A Border takes one child, and the rail has two groups: the card icons
+                             at the top and the colours button at the foot. -->
+                        <Grid>
+                            <StackPanel Spacing="4" VerticalAlignment="Top">
                         <Button x:Name="SessionsTabButton"
                                 Width="34"
                                 Height="36"
@@ -301,7 +293,25 @@
                                 <FontIcon x:Name="ToolsTabIcon" Glyph="&#xE90F;" FontSize="16" />
                             </Grid>
                         </Button>
-                    </StackPanel>
+                            </StackPanel>
+
+                            <!--
+                                Colours sit at the foot of the rail, away from the four that switch
+                                cards: it opens a dialog rather than showing a panel, so it does not
+                                belong in that group, and the foot of a rail is where a setting goes.
+                            -->
+                            <Button x:Name="AppearanceButton"
+                                    Width="34"
+                                    Height="36"
+                                    Padding="0"
+                                    VerticalAlignment="Bottom"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    ToolTipService.ToolTip="Terminal colors"
+                                    Click="OnAppearanceClick">
+                                <FontIcon Glyph="&#xE790;" FontSize="15" />
+                            </Button>
+                        </Grid>
                     </Border>
 
                     <!-- The part that hides on collapse; the rail beside it stays. -->

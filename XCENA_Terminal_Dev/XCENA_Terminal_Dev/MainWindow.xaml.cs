@@ -136,6 +136,11 @@ namespace XCENA_Terminal_Dev
             _ = Files.SetShowFilesAsync(_layoutStore.Current.ShowRemoteFiles);
             _surface.SessionClosing += (_, view) => Files.Forget(view);
             Files.CommandRequested += (_, command) => _surface.ActiveView?.SendInput(command + "\n");
+            Files.ShowFilesChanged += (_, showFiles) =>
+            {
+                _layoutStore.Current.ShowRemoteFiles = showFiles;
+                _layoutStore.Save();
+            };
             Tools.Initialize(_highlightStore.Rules);
             Tools.RulesChanged += (_, _) =>
             {
@@ -1587,32 +1592,12 @@ namespace XCENA_Terminal_Dev
         }
 
         /// <summary>
-        /// The SFTP commands only make sense against a connected tree, and only one transfer runs at
-        /// a time, so the state is resolved when the menu opens rather than tracked continuously.
+        /// Only settings live here now, and only one of them can be read from anywhere but the
+        /// store, so this is a short list: the check mark and the folder currently in use.
         /// </summary>
         private void OnOptionsOpening(object sender, object e)
         {
             CopyOnSelectItem.IsChecked = _layoutStore.Current.CopyOnSelect;
-            SftpShowFilesItem.IsChecked = Files.ShowFiles;
-
-            bool live = Files.IsLive;
-            bool idle = live && !Files.IsTransferring;
-
-            SftpUploadItem.IsEnabled = idle;
-            SftpUploadFolderItem.IsEnabled = idle;
-            SftpDownloadItem.IsEnabled = idle && Files.CanDownload;
-            SftpDownloadTreeItem.IsEnabled = idle && Files.CanDownloadFolder;
-            SftpRefreshItem.IsEnabled = live;
-
-            SftpDownloadItem.Text = Files.ShowFiles
-                ? "Download selected file…"
-                : "Download selected file… (turn on Show files)";
-
-            // A folder copy is recursive, so it says so: the count is what tells you it is not one
-            // directory's worth of files.
-            SftpDownloadTreeItem.Text = Files.CanDownloadFolder
-                ? "Download selected folder, with everything in it…"
-                : "Download selected folder… (select a folder)";
 
             string folder = _layoutStore.Current.DownloadFolder;
             SftpDownloadFolderItem.Text = folder.Length > 0
@@ -1668,44 +1653,61 @@ namespace XCENA_Terminal_Dev
             Files.DownloadFolder = string.Empty;
         }
 
-        private async void OnSftpShowFilesClick(object sender, RoutedEventArgs e)
-        {
-            bool showFiles = SftpShowFilesItem.IsChecked;
-            _layoutStore.Current.ShowRemoteFiles = showFiles;
-            _layoutStore.Save();
+        // ---------- help ----------
 
-            SelectSidebarTab(SidebarTab.Files);
-            await Files.SetShowFilesAsync(showFiles);
+        /// <summary>
+        /// Opens the manual. The copy that ships beside the exe is used when it is there, so this
+        /// works with no network; otherwise the one in the repository, which is always current.
+        /// </summary>
+        private async void OnHelpManualClick(object sender, RoutedEventArgs e)
+        {
+            string local = Path.Combine(AppContext.BaseDirectory, "docs", "MANUAL.md");
+
+            if (File.Exists(local) && Open(local))
+            {
+                return;
+            }
+
+            if (!Open(ManualUrl))
+            {
+                await ShowDialogAsync(new ContentDialog
+                {
+                    Title = "Manual",
+                    Content = $"Cannot open a browser. The manual is at:\n\n{ManualUrl}",
+                    CloseButtonText = "Close",
+                });
+            }
         }
 
-        private async void OnSftpUploadClick(object sender, RoutedEventArgs e)
+        private const string ManualUrl =
+            "https://github.com/andro78/XCENA_Terminal_Dev/blob/main/docs/MANUAL.md";
+
+        private void OnHelpDataFolderClick(object sender, RoutedEventArgs e) =>
+            Open(AppPaths.DataDirectory);
+
+        /// <summary>Hands a path or URL to the shell. False when Windows had nothing to open it with.</summary>
+        private static bool Open(string target)
         {
-            SelectSidebarTab(SidebarTab.Files);
-            await Files.PickAndUploadAsync();
+            try
+            {
+                Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
 
-        private async void OnSftpUploadFolderClick(object sender, RoutedEventArgs e)
-        {
-            SelectSidebarTab(SidebarTab.Files);
-            await Files.PickAndUploadFolderAsync();
-        }
+        private async void OnHelpShortcutsClick(object sender, RoutedEventArgs e) =>
+            await ShowDialogAsync(new ShortcutsDialog());
 
-        private async void OnSftpDownloadClick(object sender, RoutedEventArgs e)
+        private async void OnHelpAboutClick(object sender, RoutedEventArgs e)
         {
-            SelectSidebarTab(SidebarTab.Files);
-            await Files.DownloadSelectedAsync();
-        }
+            var dialog = new AboutDialog();
+            dialog.OpenDataFolderRequested += (_, _) => Open(AppPaths.DataDirectory);
 
-        private async void OnSftpDownloadTreeClick(object sender, RoutedEventArgs e)
-        {
-            SelectSidebarTab(SidebarTab.Files);
-            await Files.DownloadSelectedFolderAsync();
-        }
-
-        private async void OnSftpRefreshClick(object sender, RoutedEventArgs e)
-        {
-            SelectSidebarTab(SidebarTab.Files);
-            await Files.RefreshAsync();
+            await ShowDialogAsync(dialog);
         }
 
         /// <summary>Keeps the title-bar button and its radio items in step with the surface.</summary>

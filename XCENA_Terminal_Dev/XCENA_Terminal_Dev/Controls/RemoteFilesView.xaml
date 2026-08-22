@@ -57,6 +57,7 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
             <TextBlock x:Name="PathText"
@@ -68,8 +69,24 @@
                        TextWrapping="NoWrap"
                        Text="" />
 
+            <!--
+                Files in the tree or only directories. It lives here rather than in a menu at the
+                top of the window because it changes what this panel shows.
+            -->
+            <ToggleButton x:Name="ShowFilesButton"
+                          Grid.Column="1"
+                          Width="28"
+                          Height="26"
+                          Padding="0"
+                          Background="Transparent"
+                          BorderThickness="0"
+                          ToolTipService.ToolTip="Show files, not only folders"
+                          Click="OnShowFilesClick">
+                <FontIcon Glyph="&#xE7C3;" FontSize="13" />
+            </ToggleButton>
+
             <Button x:Name="UploadButton"
-                    Grid.Column="1"
+                    Grid.Column="2"
                     Width="28"
                     Height="26"
                     Padding="0"
@@ -82,7 +99,7 @@
             </Button>
 
             <Button x:Name="UpButton"
-                    Grid.Column="2"
+                    Grid.Column="3"
                     Width="28"
                     Height="26"
                     Padding="0"
@@ -95,7 +112,7 @@
             </Button>
 
             <Button x:Name="HomeButton"
-                    Grid.Column="3"
+                    Grid.Column="4"
                     Width="28"
                     Height="26"
                     Padding="0"
@@ -108,7 +125,7 @@
             </Button>
 
             <Button x:Name="RefreshButton"
-                    Grid.Column="4"
+                    Grid.Column="5"
                     Width="28"
                     Height="26"
                     Padding="0"

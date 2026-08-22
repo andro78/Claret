@@ -73,8 +73,6 @@ namespace XCENA_Terminal_Dev.Controls
         private readonly DispatcherQueue _dispatcher;
         private readonly object _outputGate = new();
         private readonly List<byte[]> _pendingOutput = new();
-        private readonly TriggerWatcher _triggers = new();
-        private readonly List<TriggerHit> _pendingHits = new();
 
         private TaskCompletionSource<bool>? _readySource;
         private ITerminalLink? _session;
@@ -137,12 +135,6 @@ namespace XCENA_Terminal_Dev.Controls
 
         /// <summary>Raised when an AI CLI prompt was answered automatically. Carries the option taken.</summary>
         public event EventHandler<string>? AutoApproved;
-
-        /// <summary>
-        /// Raised on the UI thread when trigger text turned up in the output, after the output it
-        /// matched has been posted — so what fired is read below the line that caused it.
-        /// </summary>
-        public event EventHandler<(TriggerRule Rule, string Line)>? TriggerFired;
 
         /// <summary>Raised when the user presses a window-level chord inside the terminal.</summary>
         public event EventHandler<TerminalCommand>? CommandRequested;
@@ -253,11 +245,6 @@ namespace XCENA_Terminal_Dev.Controls
         private async Task OpenAsync(string label, Func<ITerminalLink> open)
         {
             StopRetryCountdown();
-
-            // A new session, including one after a reconnect, is a new boot to watch: one-shot
-            // triggers arm again, because the login prompt they answer is about to come round again.
-            _triggers.Rearm();
-
             SetState(TerminalState.Connecting);
             ShowBusy(_retryAttempt > 0 ? $"Reconnecting… (attempt {_retryAttempt})" : "Connecting…", label);
 
@@ -750,18 +737,9 @@ namespace XCENA_Terminal_Dev.Controls
             // the terminal's own redraws.
             _log?.Write(chunk);
 
-            // Same reason for the triggers: they wait on what the far end said, so a line that
-            // scrolls past between two frames still counts and a redraw does not count twice.
-            List<TriggerHit> hits = _triggers.Scan(chunk);
-
             lock (_outputGate)
             {
                 _pendingOutput.Add(chunk);
-                if (hits.Count > 0)
-                {
-                    _pendingHits.AddRange(hits);
-                }
-
                 if (_flushQueued)
                 {
                     return;
@@ -786,21 +764,17 @@ namespace XCENA_Terminal_Dev.Controls
         private void FlushOutput()
         {
             byte[][] chunks;
-            TriggerHit[] hits;
             int total = 0;
 
             lock (_outputGate)
             {
                 chunks = _pendingOutput.ToArray();
                 _pendingOutput.Clear();
-                hits = _pendingHits.ToArray();
-                _pendingHits.Clear();
                 _flushQueued = false;
             }
 
             if (chunks.Length == 0)
             {
-                RaiseTriggers(hits);
                 return;
             }
 
@@ -818,41 +792,7 @@ namespace XCENA_Terminal_Dev.Controls
             }
 
             Post("o" + Convert.ToBase64String(merged));
-
-            // After the output, not before: a notice about a trigger belongs under the line that
-            // set it off, and an action that answers the far end reads as a reply to it.
-            RaiseTriggers(hits);
         }
-
-        private void RaiseTriggers(TriggerHit[] hits)
-        {
-            foreach (TriggerHit hit in hits)
-            {
-                TriggerFired?.Invoke(this, (hit.Rule, hit.Line));
-            }
-        }
-
-        /// <summary>
-        /// Arms this session with the current triggers. Rules that have already fired their one
-        /// shot stay fired; editing a rule re-arms that rule alone.
-        /// </summary>
-        public void ApplyTriggers(IEnumerable<TriggerRule> triggers) => _triggers.Apply(triggers);
-
-        /// <summary>
-        /// Types a trigger's response back without taking focus. A trigger fires while you are
-        /// somewhere else — that is the point of it — so it must not pull the caret out of whatever
-        /// you were typing in.
-        /// </summary>
-        public void SendResponse(string text)
-        {
-            if (!string.IsNullOrEmpty(text))
-            {
-                _session?.SendText(text);
-            }
-        }
-
-        /// <summary>Prints a dim line in the terminal, as the app talking rather than the far end.</summary>
-        public void ShowNotice(string text) => PostNotice(text);
 
         private const string DimStart = "\u001b[90m";
         private const string DimEnd = "\u001b[0m";

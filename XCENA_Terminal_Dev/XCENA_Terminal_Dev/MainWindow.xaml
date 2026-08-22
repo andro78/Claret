@@ -423,26 +423,7 @@
                     <Border.Shadow>
                         <ThemeShadow />
                     </Border.Shadow>
-                    <!--
-                        Two lists, both "watch the output for text": one paints it, one acts on it.
-                        They share the card because they are the same question asked twice.
-                    -->
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="*" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
-
-                        <local2:HighlightRulesView x:Name="Tools" Grid.Row="0" />
-
-                        <Border Grid.Row="1"
-                                Height="1"
-                                Margin="4,8"
-                                Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
-
-                        <local2:TriggersView x:Name="Triggers" Grid.Row="2" />
-                    </Grid>
+                    <local2:HighlightRulesView x:Name="Tools" />
                 </Border>
 
                     </Grid>

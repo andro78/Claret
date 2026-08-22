@@ -9,7 +9,7 @@ namespace XCENA_Terminal_Dev.Services
     /// <para>
     /// Both halves are stateful because both can be split between two reads — a Hangul syllable
     /// across its three bytes, an escape sequence across its parameters. Anything that scans the
-    /// stream (a log, a trigger) needs the same treatment, so it lives here rather than in either.
+    /// stream needs the same treatment, so it lives here rather than inside whatever reads it.
     /// </para>
     /// </summary>
     internal sealed class TextStream

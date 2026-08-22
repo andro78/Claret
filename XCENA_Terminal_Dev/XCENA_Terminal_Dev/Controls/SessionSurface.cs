@@ -32,6 +32,7 @@ namespace XCENA_Terminal_Dev.Controls
         private PaneLeafNode? _active;
         private TerminalAppearance? _appearance;
         private List<HighlightRule>? _highlights;
+        private List<TriggerRule>? _triggers;
         private bool _copyOnSelect = true;
         private bool _pruneQueued;
 
@@ -100,6 +101,7 @@ namespace XCENA_Terminal_Dev.Controls
             view.TitleChanged += OnSessionTitleChanged;
             view.PlatformDetected += OnSessionPlatformDetected;
             view.AutoApproved += OnSessionAutoApproved;
+            view.TriggerFired += OnSessionTriggerFired;
 
             var tab = new TabViewItem
             {
@@ -120,6 +122,11 @@ namespace XCENA_Terminal_Dev.Controls
             if (_highlights is not null)
             {
                 view.ApplyHighlights(_highlights);
+            }
+
+            if (_triggers is not null)
+            {
+                view.ApplyTriggers(_triggers);
             }
 
             view.ApplyCopyOnSelect(_copyOnSelect);
@@ -158,6 +165,7 @@ namespace XCENA_Terminal_Dev.Controls
             view.TitleChanged -= OnSessionTitleChanged;
             view.PlatformDetected -= OnSessionPlatformDetected;
             view.AutoApproved -= OnSessionAutoApproved;
+            view.TriggerFired -= OnSessionTriggerFired;
 
             TabViewItem? tab = leaf.Group.Detach(view);
             if (tab is not null)
@@ -281,6 +289,20 @@ namespace XCENA_Terminal_Dev.Controls
                 foreach (TerminalView view in leaf.Group.Sessions)
                 {
                     view.ApplyHighlights(_highlights);
+                }
+            }
+        }
+
+        /// <summary>Pushes the output triggers to every open terminal, and to any opened later.</summary>
+        public void ApplyTriggers(IReadOnlyList<TriggerRule> triggers)
+        {
+            _triggers = triggers.Select(trigger => trigger.Clone()).ToList();
+
+            foreach (PaneLeafNode leaf in Leaves())
+            {
+                foreach (TerminalView view in leaf.Group.Sessions)
+                {
+                    view.ApplyTriggers(_triggers);
                 }
             }
         }
@@ -790,6 +812,17 @@ namespace XCENA_Terminal_Dev.Controls
 
         private void OnSessionAutoApproved(object? sender, string option) =>
             AutoApproved?.Invoke(this, option);
+
+        /// <summary>Raised when a trigger matched in one of the sessions; carries which, and where.</summary>
+        public event EventHandler<(TerminalView View, TriggerRule Rule, string Line)>? TriggerFired;
+
+        private void OnSessionTriggerFired(object? sender, (TriggerRule Rule, string Line) hit)
+        {
+            if (sender is TerminalView view)
+            {
+                TriggerFired?.Invoke(this, (view, hit.Rule, hit.Line));
+            }
+        }
 
         private static SymbolIconSource Symbolic(Symbol symbol) => new() { Symbol = symbol };
 

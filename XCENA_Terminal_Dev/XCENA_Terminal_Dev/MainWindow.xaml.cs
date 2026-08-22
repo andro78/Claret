@@ -48,6 +48,7 @@ namespace XCENA_Terminal_Dev
         private readonly HighlightStore _highlightStore = new();
         private readonly SerialProfileStore _serialProfileStore = new();
         private readonly PromptHistoryStore _promptStore = new();
+        private readonly TriggerStore _triggerStore = new();
         private readonly SessionSurface _surface = new();
         private readonly IntPtr _windowHandle;
 
@@ -99,6 +100,7 @@ namespace XCENA_Terminal_Dev
             _appearanceStore.Load();
             _layoutStore.Load();
             _highlightStore.Load();
+            _triggerStore.Load();
             _serialProfileStore.Load();
             _promptStore.Load();
 
@@ -147,6 +149,15 @@ namespace XCENA_Terminal_Dev
             };
             _surface.ApplyHighlights(_highlightStore.Rules);
             _surface.ApplyCopyOnSelect(_layoutStore.Current.CopyOnSelect);
+
+            Triggers.Initialize(_triggerStore.Triggers);
+            Triggers.TriggersChanged += (_, _) =>
+            {
+                _triggerStore.Save();
+                _surface.ApplyTriggers(_triggerStore.Triggers);
+            };
+            _surface.ApplyTriggers(_triggerStore.Triggers);
+            _surface.TriggerFired += OnSurfaceTriggerFired;
 
             Serial.BindPinned(_serialProfileStore.Profiles);
             Serial.Initialize(_layoutStore.Current.Serial);
@@ -1363,6 +1374,91 @@ namespace XCENA_Terminal_Dev
         /// Records what was answered, so the status bar can name the last prompt taken rather than
         /// only that the automation is armed.
         /// </summary>
+        /// <summary>
+        /// Carries out what a trigger asked for. Every action also prints a line in the session
+        /// saying which trigger fired and what it did: something acting on your console on its own
+        /// has to leave a mark, and the mark belongs in the transcript with the line that caused it.
+        /// </summary>
+        private void OnSurfaceTriggerFired(object? sender, (TerminalView View, TriggerRule Rule, string Line) hit)
+        {
+            (TerminalView view, TriggerRule rule, string line) = hit;
+
+            switch (rule.Action)
+            {
+                case TriggerEffect.StartLog:
+                    if (view.LogPath is null)
+                    {
+                        StartTriggeredLog(view, rule);
+                    }
+
+                    break;
+
+                case TriggerEffect.StopLog:
+                    if (view.LogPath is not null)
+                    {
+                        view.ShowNotice(Mark(rule, "stopping the recording"));
+                        view.StopLogging();
+                    }
+
+                    break;
+
+                case TriggerEffect.Send:
+                    view.SendResponse(rule.SendReturn ? rule.Response + "\r" : rule.Response);
+                    view.ShowNotice(Mark(rule, $"sent “{rule.Response}”"));
+                    break;
+
+                default:
+                    Beep();
+                    view.ShowNotice(Mark(rule, line.Length > 0 ? $"matched “{line}”" : "matched"));
+                    break;
+            }
+
+            UpdateStatusLog();
+        }
+
+        /// <summary>
+        /// Starts a recording a trigger asked for. There is nobody to pick a file — the thing being
+        /// waited for will not wait for a dialog — so it goes to a named file in the app's log
+        /// folder, and the notice says where, since a log you cannot find is not a record.
+        /// </summary>
+        private void StartTriggeredLog(TerminalView view, TriggerRule rule)
+        {
+            try
+            {
+                string name = $"{Sanitise(view.SessionLabel)}-{DateTime.Now:yyyyMMdd-HHmmss}.log";
+                string path = Path.Combine(AppPaths.LogDirectory, name);
+
+                view.ShowNotice(Mark(rule, "starting a recording"));
+                view.StartLogging(path, view.SessionLabel);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                view.ShowNotice(Mark(rule, $"could not start a recording: {ex.Message}"));
+            }
+        }
+
+        private static string Mark(TriggerRule rule, string what) =>
+            $"\n[trigger “{rule.Pattern}”: {what}]\n";
+
+        /// <summary>
+        /// The system alert sound. A trigger's whole purpose is to reach you while you are looking
+        /// somewhere else, so the alert has to be audible rather than only on screen.
+        /// </summary>
+        private static void Beep()
+        {
+            try
+            {
+                MessageBeep(0xFFFFFFFF);
+            }
+            catch (Exception)
+            {
+                // A machine with no sound is not a reason to lose the trigger.
+            }
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool MessageBeep(uint type);
+
         private void OnSurfaceAutoApproved(object? sender, string option)
         {
             int colon = option.IndexOf(':');

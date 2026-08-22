@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="XCENA_Terminal_Dev.Dialogs.TriggerDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="Trigger"
+    PrimaryButtonText="Save"
+    CloseButtonText="Cancel"
+    DefaultButton="Primary">
+
+    <StackPanel Spacing="12" Width="420">
+
+        <TextBox x:Name="PatternBox"
+                 Header="When this text appears"
+                 PlaceholderText="Hit any key to stop autoboot"
+                 TextChanged="OnFormChanged" />
+
+        <CheckBox x:Name="IgnoreCaseCheck"
+                  Content="Ignore case" />
+
+        <ComboBox x:Name="ActionBox"
+                  Header="Then"
+                  HorizontalAlignment="Stretch"
+                  SelectionChanged="OnActionChanged">
+            <ComboBoxItem Content="Alert me" Tag="Notify" />
+            <ComboBoxItem Content="Start recording to a file" Tag="StartLog" />
+            <ComboBoxItem Content="Stop recording" Tag="StopLog" />
+            <ComboBoxItem Content="Send text back" Tag="Send" />
+        </ComboBox>
+
+        <StackPanel x:Name="SendPanel" Spacing="8" Visibility="Collapsed">
+            <TextBox x:Name="ResponseBox"
+                     Header="Send"
+                     PlaceholderText="root"
+                     TextChanged="OnFormChanged" />
+            <CheckBox x:Name="SendReturnCheck" Content="End it with a Return" />
+            <TextBlock TextWrapping="Wrap"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       Text="Turn the Return off to send bare keystrokes — a boot loader waiting for any key wants one character, not a line." />
+        </StackPanel>
+
+        <CheckBox x:Name="OnceCheck" Content="Only once per session" />
+
+        <TextBlock x:Name="Explanation"
+                   TextWrapping="Wrap"
+                   Style="{StaticResource CaptionTextBlockStyle}"
+                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+        <InfoBar x:Name="Problem"
+                 IsOpen="False"
+                 IsClosable="False"
+                 Severity="Error" />
+    </StackPanel>
+</ContentDialog>

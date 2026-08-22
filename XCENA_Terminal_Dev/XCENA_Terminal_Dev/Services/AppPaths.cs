@@ -27,6 +27,23 @@ namespace XCENA_Terminal_Dev.Services
 
         public static string PromptsFile => Path.Combine(DataDirectory, "prompts.json");
 
+        public static string TriggersFile => Path.Combine(DataDirectory, "triggers.json");
+
+        /// <summary>
+        /// Where a recording goes when nobody chose a folder — a trigger that starts a log has to
+        /// pick the file itself, since the thing it was waiting for will not wait for a dialog.
+        /// Created on demand rather than at startup.
+        /// </summary>
+        public static string LogDirectory
+        {
+            get
+            {
+                string dir = Path.Combine(DataDirectory, "logs");
+                Directory.CreateDirectory(dir);
+                return dir;
+            }
+        }
+
         private static string CreateDataDirectory()
         {
             string root = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);

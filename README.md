@@ -339,12 +339,18 @@ WebView2가 키보드 포커스를 가지므로 XAML 액셀러레이터가 보�
 설치돼 있음):
 
 ```powershell
-dotnet build XCENA_Terminal_Dev\XCENA_Terminal_Dev\XCENA_Terminal_Dev.csproj `
+cd XCENA_Terminal_Dev\XCENA_Terminal_Dev
+dotnet build XCENA_Terminal_Dev.csproj `
   -c Debug -p:Platform=x64 -p:WindowsPackageType=None `
-  -p:OutputPath=XCENA_Terminal_Dev\XCENA_Terminal_Dev\bin\Run-x64\
+  -p:OutputPath=bin\Run-x64\
 ```
 
 산출물: `XCENA_Terminal_Dev\XCENA_Terminal_Dev\bin\Run-x64\XCENA_Terminal_Dev.exe`
+
+`OutputPath`는 **프로젝트 디렉터리 기준 상대 경로**다. 저장소 루트에서 긴 경로를 그대로
+넘기면 `XCENA_Terminal_Dev\XCENA_Terminal_Dev\XCENA_Terminal_Dev\...`처럼 한 단계 더
+중첩된 곳에 출력이 생기고, `bin\Run-x64`에는 예전 파일만 남아 실행 시 ".NET을 설치하라"는
+대화상자가 뜬다. 그래서 위처럼 프로젝트 디렉터리에서 실행한다.
 
 `OutputPath`만 바꾸고 `BaseIntermediateOutputPath`는 건드리지 말 것 — `obj` 위치를 옮기면
 기존 `obj\x64`의 생성 코드가 중복 컴파일되어 CS0579로 깨진다. 언패키지 빌드는 `obj`를

@@ -11,16 +11,35 @@ namespace XCENA_Terminal_Dev.Services
     /// </summary>
     internal sealed class SessionLog : IDisposable
     {
+        private const char Escape = (char)0x1B;
+        private const char Bell = (char)0x07;
+
         private readonly StreamWriter _writer;
-        private readonly TextStream _text = new();
+        private readonly Decoder _decoder = Encoding.UTF8.GetDecoder();
         private readonly object _gate = new();
 
+        private Filter _state = Filter.Text;
         private bool _disposed;
 
         private SessionLog(StreamWriter writer, string path)
         {
             _writer = writer;
             Path = path;
+        }
+
+        /// <summary>Where the escape-sequence filter currently is.</summary>
+        private enum Filter
+        {
+            Text,
+
+            /// <summary>Just saw ESC; the next byte says what kind of sequence this is.</summary>
+            Escape,
+
+            /// <summary>Inside a CSI sequence: runs until a byte in 0x40..0x7E.</summary>
+            Csi,
+
+            /// <summary>Inside an OSC (window title and friends): runs until BEL or ESC \.</summary>
+            Osc,
         }
 
         public string Path { get; }
@@ -38,7 +57,10 @@ namespace XCENA_Terminal_Dev.Services
             return new SessionLog(writer, path);
         }
 
-        /// <summary>Takes the bytes as they arrive and writes the readable text out of them.</summary>
+        /// <summary>
+        /// Takes the bytes as they arrive. Decoding is stateful, because a UTF-8 character can be
+        /// split across two reads, and so is the filter, because so can an escape sequence.
+        /// </summary>
         public void Write(byte[] data)
         {
             if (data.Length == 0)
@@ -53,19 +75,97 @@ namespace XCENA_Terminal_Dev.Services
                     return;
                 }
 
-                string text = _text.Read(data);
-                if (text.Length == 0)
+                char[] chars = new char[data.Length];
+                int count = _decoder.GetChars(data, 0, data.Length, chars, 0);
+
+                var text = new StringBuilder(count);
+
+                for (int i = 0; i < count; i++)
                 {
-                    return;
+                    char c = chars[i];
+
+                    switch (_state)
+                    {
+                        case Filter.Escape:
+                            _state = c switch
+                            {
+                                '[' => Filter.Csi,
+                                ']' => Filter.Osc,
+                                // Two-character sequences end here; anything else was not one.
+                                _ => Filter.Text,
+                            };
+                            continue;
+
+                        case Filter.Csi:
+                            if (c is >= '@' and <= '~')
+                            {
+                                _state = Filter.Text;
+                            }
+
+                            continue;
+
+                        case Filter.Osc:
+                            if (c == Bell || c == Escape)
+                            {
+                                _state = Filter.Text;
+                            }
+
+                            continue;
+                    }
+
+                    if (c == Escape)
+                    {
+                        _state = Filter.Escape;
+                        continue;
+                    }
+
+                    switch (c)
+                    {
+
+                        case '\r':
+                            // A CR before LF is just the line ending. A bare one is a redraw in
+                            // place — a progress counter, usually — and becomes a line of its own,
+                            // because gluing the states together reads as one corrupt line.
+                            if (i + 1 < count && chars[i + 1] == '\n')
+                            {
+                                break;
+                            }
+
+                            if (text.Length > 0 && text[^1] != '\n')
+                            {
+                                text.Append('\n');
+                            }
+
+                            break;
+
+                        case '\b':
+                            if (text.Length > 0)
+                            {
+                                text.Length--;
+                            }
+
+                            break;
+
+                        default:
+                            if (c >= ' ' || c == '\n' || c == '\t')
+                            {
+                                text.Append(c);
+                            }
+
+                            break;
+                    }
                 }
 
-                try
+                if (text.Length > 0)
                 {
-                    _writer.Write(text);
-                }
-                catch (IOException)
-                {
-                    // A full or disconnected drive must not take the session down with it.
+                    try
+                    {
+                        _writer.Write(text.ToString());
+                    }
+                    catch (IOException)
+                    {
+                        // A full or disconnected drive must not take the session down with it.
+                    }
                 }
             }
         }

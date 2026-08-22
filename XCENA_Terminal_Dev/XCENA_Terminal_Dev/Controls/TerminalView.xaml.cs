@@ -377,22 +377,6 @@ namespace XCENA_Terminal_Dev.Controls
 
         public void ClearScreen() => Post("x");
 
-        /// <summary>
-        /// Hands text to the terminal as a paste rather than as typing. That matters for anything
-        /// with newlines in it: pasted text goes in bracketed, so a CLI takes the whole thing as one
-        /// input instead of submitting at the first line break.
-        /// </summary>
-        public void PasteText(string text)
-        {
-            if (text.Length == 0)
-            {
-                return;
-            }
-
-            Post("p" + text);
-            FocusTerminal();
-        }
-
         /// <summary>Types text into the shell, as if the user had entered it at the prompt.</summary>
         public void SendInput(string text)
         {

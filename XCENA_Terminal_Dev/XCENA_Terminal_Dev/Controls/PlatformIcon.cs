@@ -28,12 +28,12 @@ namespace XCENA_Terminal_Dev.Controls
         private static Geometry SerialShell()
         {
             var shell = new GeometryGroup { FillRule = FillRule.EvenOdd };
-            shell.Children.Add(Trapezoid(1.5, 4.5, 14.5, 12.8, 11.5, 3.2));
-            shell.Children.Add(Trapezoid(3.2, 6, 12.8, 11.9, 10, 4.1));
+            shell.Children.Add(Trapezoid(1, 2, 17, 14.2, 15, 3.8));
+            shell.Children.Add(Trapezoid(2.8, 3.9, 15.2, 12.8, 13.1, 5.2));
 
-            foreach (double x in new[] { 5.2, 7.3, 9.4 })
+            foreach (double x in new[] { 5.1, 8, 10.9 })
             {
-                shell.Children.Add(new RectangleGeometry { Rect = new Rect(x, 7.4, 1.4, 1.2) });
+                shell.Children.Add(new RectangleGeometry { Rect = new Rect(x, 6.9, 2, 3.1) });
             }
 
             return shell;

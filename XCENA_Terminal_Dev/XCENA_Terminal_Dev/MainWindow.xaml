@@ -266,33 +266,13 @@
                                     squares inside it read as pins.
                                 -->
                                 <PathIcon x:Name="SerialTabIcon"
-                                          Width="16"
-                                          Height="16"
-                                          Data="F0 M 1.5,4.5 L 14.5,4.5 L 12.8,11.5 L 3.2,11.5 Z
-                                                   M 3.2,6 L 12.8,6 L 11.9,10 L 4.1,10 Z
-                                                   M 5.2,7.4 h 1.4 v 1.2 h -1.4 Z
-                                                   M 7.3,7.4 h 1.4 v 1.2 h -1.4 Z
-                                                   M 9.4,7.4 h 1.4 v 1.2 h -1.4 Z" />
-                            </Grid>
-                        </Button>
-
-                        <!-- Writes the prompt for whatever AI CLI is running in the active session. -->
-                        <Button x:Name="PromptTabButton"
-                                Width="34"
-                                Height="36"
-                                Padding="0"
-                                Background="Transparent"
-                                BorderThickness="0"
-                                ToolTipService.ToolTip="Prompt"
-                                Click="OnPromptTabClick">
-                            <Grid Width="34" Height="36">
-                                <Border x:Name="PromptTabMarker"
-                                        Width="3"
-                                        Height="18"
-                                        CornerRadius="2"
-                                        HorizontalAlignment="Left"
-                                        VerticalAlignment="Center" />
-                                <FontIcon x:Name="PromptTabIcon" Glyph="&#xE8BD;" FontSize="16" />
+                                          Width="18"
+                                          Height="18"
+                                          Data="F0 M 1,2 L 17,2 L 14.2,15 L 3.8,15 Z
+                                                   M 2.8,3.9 L 15.2,3.9 L 12.8,13.1 L 5.2,13.1 Z
+                                                   M 5.1,6.9 h 2 v 3.1 h -2 Z
+                                                   M 8,6.9 h 2 v 3.1 h -2 Z
+                                                   M 10.9,6.9 h 2 v 3.1 h -2 Z" />
                             </Grid>
                         </Button>
 
@@ -437,20 +417,6 @@
                         <ThemeShadow />
                     </Border.Shadow>
                     <local2:SerialPortsView x:Name="Serial" />
-                </Border>
-
-                <Border x:Name="PromptCard"
-                        Padding="2"
-                        Visibility="Collapsed"
-                        Background="{ThemeResource LayerFillColorDefaultBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                        BorderThickness="1"
-                        CornerRadius="8"
-                        Translation="0,0,28">
-                    <Border.Shadow>
-                        <ThemeShadow />
-                    </Border.Shadow>
-                    <local2:PromptView x:Name="Prompt" />
                 </Border>
 
                 <Border x:Name="ToolsCard"

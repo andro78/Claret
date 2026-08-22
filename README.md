@@ -5,19 +5,18 @@ SSH 전송은 SSH.NET이 담당한다.
 
 쓰는 방법은 **[사용 설명서](docs/MANUAL.md)** 에 있다. 아래는 코드 구조와 빌드 방법이다.
 
-## 이 사본에 대해
+## 이름이 바뀌었다
 
-`XCENA_Terminal_Dev`를 이름만 `PowerTerm`으로 바꾼 별도 사본이다. 원본과 나란히 두고 쓸 수 있게
-두 가지를 다르게 두었다.
+2026-08-22에 `XCENA Terminal` → `PowerTerm`으로 바꿨다. 히스토리는 그대로 이어진다 — 같은
+저장소이고, 파일 87개가 이동(rename)으로 추적된다. 저장소도 `andro78/PowerTerm`으로 바꿨다
+(예전 URL은 GitHub이 리다이렉트한다).
 
-- **설정 폴더는 따로 쓴다** — `%APPDATA%\PowerTerm`. 처음 실행할 때 `%APPDATA%\XCENA Terminal`의
-  `*.json`을 복사해 온다(원본 것은 건드리지 않는다). 그래서 저장한 접속 목록과 호스트 키가 그대로
-  보인다.
-- **저장된 비밀번호도 그대로 열린다.** DPAPI 엔트로피 문자열(`SecretProtector`)은 옛 이름을 그대로
-  유지했다 — 그 문자열이 키의 일부라서, 바꾸면 이미 저장된 비밀번호를 못 푼다.
+바꾸지 않은 것이 하나 있다. **DPAPI 엔트로피 문자열**(`Services/SecretProtector.cs`)은 옛 이름을
+그대로 둔다 — 그 문자열이 키의 일부라서, 바꾸면 이미 저장된 비밀번호를 하나도 못 푼다.
 
-Help → Manual은 exe 옆에 함께 배포된 문서를 연다. 저장소 URL로 넘어가지 않는다 — 이 사본에
-해당하는 원격 저장소는 없다.
+설정은 `%APPDATA%\PowerTerm`으로 옮겨졌고, 처음 실행할 때 `%APPDATA%\XCENA Terminal`의 `*.json`을
+복사해 온다(옛 폴더는 건드리지 않는다). 그래서 저장한 접속 목록·호스트 키·비밀번호가 그대로 열린다.
+옮겨온 뒤에는 옛 폴더를 지워도 된다.
 
 주의: **PowerTerm**은 Ericom의 터미널 에뮬레이터 제품군(PowerTerm InterConnect / WebConnect)에서
 쓰이는 이름이다. 사내에서만 쓸 것이라면 문제되지 않겠지만, 밖으로 내보낼 이름으로는 확인이 필요하다.

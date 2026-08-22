@@ -2,7 +2,7 @@ param([string]$OutDir, [string]$AppAssets, [string]$PackageImages)
 
 Add-Type -AssemblyName System.Drawing
 
-# XCENA Terminal mark: a yellow shell prompt (">_") on a burgundy plate.
+# PowerTerm mark: a yellow shell prompt (">_") on a burgundy plate.
 # Drawn as geometry rather than text so it stays crisp from 16px to 256px.
 $Plate    = [System.Drawing.Color]::FromArgb(255, 140, 35,  50)   # #8C2332, the app accent
 $PlateTop = [System.Drawing.Color]::FromArgb(255, 162, 44,  62)   # #A22C3E

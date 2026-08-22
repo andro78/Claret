@@ -1,9 +1,26 @@
-﻿# XCENA Terminal
+﻿# PowerTerm
 
 WinUI 3 기반 SSH·시리얼 터미널 클라이언트. VT100/ANSI 에뮬레이션은 WebView2에 올린 xterm.js가,
 SSH 전송은 SSH.NET이 담당한다.
 
 쓰는 방법은 **[사용 설명서](docs/MANUAL.md)** 에 있다. 아래는 코드 구조와 빌드 방법이다.
+
+## 이 사본에 대해
+
+`XCENA_Terminal_Dev`를 이름만 `PowerTerm`으로 바꾼 별도 사본이다. 원본과 나란히 두고 쓸 수 있게
+두 가지를 다르게 두었다.
+
+- **설정 폴더는 따로 쓴다** — `%APPDATA%\PowerTerm`. 처음 실행할 때 `%APPDATA%\XCENA Terminal`의
+  `*.json`을 복사해 온다(원본 것은 건드리지 않는다). 그래서 저장한 접속 목록과 호스트 키가 그대로
+  보인다.
+- **저장된 비밀번호도 그대로 열린다.** DPAPI 엔트로피 문자열(`SecretProtector`)은 옛 이름을 그대로
+  유지했다 — 그 문자열이 키의 일부라서, 바꾸면 이미 저장된 비밀번호를 못 푼다.
+
+Help → Manual은 exe 옆에 함께 배포된 문서를 연다. 저장소 URL로 넘어가지 않는다 — 이 사본에
+해당하는 원격 저장소는 없다.
+
+주의: **PowerTerm**은 Ericom의 터미널 에뮬레이터 제품군(PowerTerm InterConnect / WebConnect)에서
+쓰이는 이름이다. 사내에서만 쓸 것이라면 문제되지 않겠지만, 밖으로 내보낼 이름으로는 확인이 필요하다.
 
 ## 구조
 
@@ -17,12 +34,12 @@ MainWindow                        사이드바 + 제목 줄 (전역 탭 스트�
              ├─ Assets/xterm/terminal.html   xterm 초기화, 키/마우스 처리
              └─ Services/SshSession          SSH.NET ShellStream 입출력
 
-Services/ProfileStore      %APPDATA%\XCENA Terminal\profiles.json
+Services/ProfileStore      %APPDATA%\PowerTerm\profiles.json
 Services/SecretProtector   DPAPI(CurrentUser)로 비밀번호·passphrase 암호화
-Services/KnownHostsStore   %APPDATA%\XCENA Terminal\known_hosts.json
-Services/RecentStore       %APPDATA%\XCENA Terminal\recent.json (비밀 없음)
-Services/AppearanceStore   %APPDATA%\XCENA Terminal\appearance.json
-Services/LayoutStore       %APPDATA%\XCENA Terminal\layout.json (사이드바, 파일 표시, 다운로드 폴더)
+Services/KnownHostsStore   %APPDATA%\PowerTerm\known_hosts.json
+Services/RecentStore       %APPDATA%\PowerTerm\recent.json (비밀 없음)
+Services/AppearanceStore   %APPDATA%\PowerTerm\appearance.json
+Services/LayoutStore       %APPDATA%\PowerTerm\layout.json (사이드바, 파일 표시, 다운로드 폴더)
 Services/SshTeardown       SSH 연결 해제를 UI 스레드 밖에서 처리
 Services/SshConnectionFactory  ConnectionInfo 생성 + 호스트 키 핀 검증 (셸/SFTP 공용)
 Services/RemoteFileService     SFTP 조회 + 파일 업로드/다운로드
@@ -332,25 +349,25 @@ WebView2가 키보드 포커스를 가지므로 XAML 액셀러레이터가 보�
 
 ## 빌드 / 실행
 
-패키지(MSIX) 앱으로 구성돼 있다. Visual Studio에서 `XCENA_Terminal_Dev (Package)`를
+패키지(MSIX) 앱으로 구성돼 있다. Visual Studio에서 `PowerTerm (Package)`를
 시작 프로젝트로 두고 F5로 실행한다.
 
-`bin\x64\Debug\net8.0-...\XCENA_Terminal_Dev.exe`는 **더블클릭으로 실행되지 않는다.**
+`bin\x64\Debug\net8.0-...\PowerTerm.exe`는 **더블클릭으로 실행되지 않는다.**
 패키지 컨텍스트가 없으면 WinUI 활성화가 `REGDB_E_CLASSNOTREG`로 실패한다. 탐색기에서
 바로 실행할 exe가 필요하면 언패키지로 빌드한다(Windows App SDK 2.3 런타임 필요 — 이미
 설치돼 있음):
 
 ```powershell
-cd XCENA_Terminal_Dev\XCENA_Terminal_Dev
-dotnet build XCENA_Terminal_Dev.csproj `
+cd PowerTerm\PowerTerm
+dotnet build PowerTerm.csproj `
   -c Debug -p:Platform=x64 -p:WindowsPackageType=None `
   -p:OutputPath=bin\Run-x64\
 ```
 
-산출물: `XCENA_Terminal_Dev\XCENA_Terminal_Dev\bin\Run-x64\XCENA_Terminal_Dev.exe`
+산출물: `PowerTerm\PowerTerm\bin\Run-x64\PowerTerm.exe`
 
 `OutputPath`는 **프로젝트 디렉터리 기준 상대 경로**다. 저장소 루트에서 긴 경로를 그대로
-넘기면 `XCENA_Terminal_Dev\XCENA_Terminal_Dev\XCENA_Terminal_Dev\...`처럼 한 단계 더
+넘기면 `PowerTerm\PowerTerm\PowerTerm\...`처럼 한 단계 더
 중첩된 곳에 출력이 생기고, `bin\Run-x64`에는 예전 파일만 남아 실행 시 ".NET을 설치하라"는
 대화상자가 뜬다. 그래서 위처럼 프로젝트 디렉터리에서 실행한다.
 
@@ -364,19 +381,19 @@ dotnet build XCENA_Terminal_Dev.csproj `
 쪽은 아무것도 설치하지 않는다.
 
 ```powershell
-dotnet publish XCENA_Terminal_Dev\XCENA_Terminal_Dev\XCENA_Terminal_Dev.csproj `
+dotnet publish PowerTerm\PowerTerm\PowerTerm.csproj `
   -c Release -p:Platform=x64 -p:PublishProfile=standalone-x64
 ```
 
-산출물: `XCENA_Terminal_Dev\XCENA_Terminal_Dev\bin\Publish\standalone-x64\`
+산출물: `PowerTerm\PowerTerm\bin\Publish\standalone-x64\`
 (522개 파일 / 274 MB, zip 압축 시 약 102 MB). 폴더째 zip으로 묶어 전달하면 압축을 풀고
-`XCENA_Terminal_Dev.exe`를 바로 실행할 수 있다.
+`PowerTerm.exe`를 바로 실행할 수 있다.
 
 **받는 쪽 요구사항은 WebView2 런타임 하나뿐이다.** Windows 11에는 기본 포함이고 Windows
 10도 Edge 업데이트로 대개 설치돼 있다. 없으면 터미널 오버레이가 설치 링크를 안내한다.
 
 설정 파일(`profiles.json` 등)은 실행 파일 옆이 아니라 사용자별
-`%APPDATA%\XCENA Terminal\`에 만들어지므로, 같은 폴더를 여러 사람이 공유해도 서로 섞이지
+`%APPDATA%\PowerTerm\`에 만들어지므로, 같은 폴더를 여러 사람이 공유해도 서로 섞이지
 않는다.
 
 주의 — **언패키지 게시는 컴파일된 XAML(`*.xbf`)과 앱 리소스 인덱스(`*.pri`)를 게시 폴더에
@@ -402,8 +419,8 @@ MSIX로 배포/등록할 때는 Windows **개발자 모드**가 켜져 있어야
 ```powershell
 # 앱 아이콘(.ico) + MSIX 타일 이미지를 다시 생성
 powershell -ExecutionPolicy Bypass -File tools\make-app-icon.ps1 `
-  -AppAssets "XCENA_Terminal_Dev\XCENA_Terminal_Dev\Assets" `
-  -PackageImages "XCENA_Terminal_Dev\XCENA_Terminal_Dev (Package)\Images"
+  -AppAssets "PowerTerm\PowerTerm\Assets" `
+  -PackageImages "PowerTerm\PowerTerm (Package)\Images"
 ```
 
 - `.ico`에는 16/20/24/32/40/48/64/128/256을 담는다. **20px 이하는 캐럿(`_`)을 빼고 셰브런만

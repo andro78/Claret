@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Application
+    x:Class="PowerTerm.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:PowerTerm">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+
+                <!--
+                    Burgundy accent. This has to be merged AFTER XamlControlsResources: merged
+                    dictionaries are searched last-to-first, so an override placed before it would
+                    simply lose. Retinting the AccentFill* brushes recolours every accent surface
+                    the framework draws — accent buttons, selection, focus — without restyling each
+                    control. Code-side accents read the same values from AppAccent.
+                -->
+                <ResourceDictionary>
+                    <ResourceDictionary.ThemeDictionaries>
+                        <ResourceDictionary x:Key="Default">
+                            <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#8C2332" />
+                            <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#7C1F2C" />
+                            <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#6B1A26" />
+                            <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#D98692" />
+                            <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="#CD7986" />
+                            <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="#C16D7B" />
+                            <SolidColorBrush x:Key="SystemControlHighlightAccentBrush" Color="#8C2332" />
+
+                            <!-- The button style reads these aliases, not AccentFillColor* directly. -->
+                            <SolidColorBrush x:Key="AccentButtonBackground" Color="#8C2332" />
+                            <SolidColorBrush x:Key="AccentButtonBackgroundPointerOver" Color="#A02A3A" />
+                            <SolidColorBrush x:Key="AccentButtonBackgroundPressed" Color="#6B1A26" />
+                            <SolidColorBrush x:Key="AccentButtonBorderBrush" Color="#8C2332" />
+                            <SolidColorBrush x:Key="AccentButtonBorderBrushPointerOver" Color="#A02A3A" />
+                            <SolidColorBrush x:Key="AccentButtonBorderBrushPressed" Color="#6B1A26" />
+                        </ResourceDictionary>
+                        <ResourceDictionary x:Key="Light">
+                            <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#8C2332" />
+                            <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#7C1F2C" />
+                            <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#6B1A26" />
+                            <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#8C2332" />
+                            <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="#7C1F2C" />
+                            <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="#6B1A26" />
+                            <SolidColorBrush x:Key="SystemControlHighlightAccentBrush" Color="#8C2332" />
+
+                            <!-- The button style reads these aliases, not AccentFillColor* directly. -->
+                            <SolidColorBrush x:Key="AccentButtonBackground" Color="#8C2332" />
+                            <SolidColorBrush x:Key="AccentButtonBackgroundPointerOver" Color="#A02A3A" />
+                            <SolidColorBrush x:Key="AccentButtonBackgroundPressed" Color="#6B1A26" />
+                            <SolidColorBrush x:Key="AccentButtonBorderBrush" Color="#8C2332" />
+                            <SolidColorBrush x:Key="AccentButtonBorderBrushPointerOver" Color="#A02A3A" />
+                            <SolidColorBrush x:Key="AccentButtonBorderBrushPressed" Color="#6B1A26" />
+                        </ResourceDictionary>
+                        <ResourceDictionary x:Key="HighContrast" />
+                    </ResourceDictionary.ThemeDictionaries>
+                </ResourceDictionary>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

@@ -523,6 +523,20 @@
 
             // Clipboard is handled on the host side: the WebView sandbox would otherwise
             // prompt for permission and cannot reach the Windows clipboard directly.
+
+            /*
+                Take the key for ourselves. Returning false only tells xterm to leave the key
+                alone — it does not stop the browser, which still runs its own edit command for
+                Ctrl+V and Ctrl+Shift+V (WebView2's AreBrowserAcceleratorKeysEnabled=false does
+                not cover editing keys). That command pastes into the hidden textarea, xterm's own
+                paste listener sends it, and the text arrives twice: once from the browser and
+                once from our clipboard round trip. Cancelling the event leaves one path.
+            */
+            function claim(ev) {
+                ev.preventDefault();
+                return false;
+            }
+
             term.attachCustomKeyEventHandler(function (ev) {
                 if (ev.type !== 'keydown') {
                     return true;
@@ -534,11 +548,11 @@
                 }
                 if (ev.ctrlKey && ev.shiftKey && (ev.key === 'C' || ev.key === 'c')) {
                     copySelection();
-                    return false;
+                    return claim(ev);
                 }
                 if (ev.ctrlKey && ev.shiftKey && (ev.key === 'V' || ev.key === 'v')) {
                     post('v');
-                    return false;
+                    return claim(ev);
                 }
 
                 // Plain Ctrl+C copies a selection only when copy-on-select is off. With it on the
@@ -551,39 +565,39 @@
 
                     copySelection();
                     term.clearSelection();
-                    return false;
+                    return claim(ev);
                 }
                 if (ev.ctrlKey && !ev.shiftKey && !ev.altKey && (ev.key === 'V' || ev.key === 'v')) {
                     post('v');
-                    return false;
+                    return claim(ev);
                 }
                 // Cycle sessions. Ctrl+Tab is not a terminal sequence (Tab is Ctrl+I), so it is
                 // safe to swallow here.
                 if (ev.ctrlKey && !ev.altKey && ev.key === 'Tab') {
                     post(ev.shiftKey ? 'kprevtab' : 'knexttab');
-                    return false;
+                    return claim(ev);
                 }
 
                 // Window-level commands: the WebView owns keyboard focus, so XAML accelerators
                 // never see these. Forward them to the host instead.
                 if (ev.ctrlKey && ev.shiftKey) {
                     var upper = ev.key.toUpperCase();
-                    if (upper === 'T') { post('knewtab'); return false; }
-                    if (upper === 'W') { post('kclosesession'); return false; }
-                    if (upper === 'B') { post('ksidebar'); return false; }
+                    if (upper === 'T') { post('knewtab'); return claim(ev); }
+                    if (upper === 'W') { post('kclosesession'); return claim(ev); }
+                    if (upper === 'B') { post('ksidebar'); return claim(ev); }
                 }
 
                 // Tile every open session, or fold back to single view.
                 if (ev.altKey && ev.shiftKey && !ev.ctrlKey) {
-                    if (ev.key === '+' || ev.key === '=') { post('ktileside'); return false; }
-                    if (ev.key === '-' || ev.key === '_') { post('ktilestack'); return false; }
+                    if (ev.key === '+' || ev.key === '=') { post('ktileside'); return claim(ev); }
+                    if (ev.key === '-' || ev.key === '_') { post('ktilestack'); return claim(ev); }
                 }
 
                 // Font size, matching Windows Terminal's bindings.
                 if (ev.ctrlKey && !ev.shiftKey && !ev.altKey) {
-                    if (ev.key === '=' || ev.key === '+') { changeFontSize(1); return false; }
-                    if (ev.key === '-' || ev.key === '_') { changeFontSize(-1); return false; }
-                    if (ev.key === '0') { setFontSize(14); return false; }
+                    if (ev.key === '=' || ev.key === '+') { changeFontSize(1); return claim(ev); }
+                    if (ev.key === '-' || ev.key === '_') { changeFontSize(-1); return claim(ev); }
+                    if (ev.key === '0') { setFontSize(14); return claim(ev); }
                 }
 
                 return true;

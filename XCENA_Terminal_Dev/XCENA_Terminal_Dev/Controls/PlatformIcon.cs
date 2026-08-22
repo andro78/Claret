@@ -1,3 +1,4 @@
+using System;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
@@ -18,6 +19,26 @@ namespace XCENA_Terminal_Dev.Controls
         /// <summary>The box the serial connector is drawn in before scaling. Square, ink centred.</summary>
         private const double SerialGrid = 22;
 
+        // The outer shell, in grid units: a trapezoid whose top edge is wider than its bottom.
+        private const double ShellLeft = 0.6;
+        private const double ShellTop = 4.8;
+        private const double ShellRight = 21.4;
+        private const double ShellBottomLeft = 4.0;
+        private const double ShellBottom = 17.2;
+        private const double ShellBottomRight = 18.0;
+        private const double ShellRadius = 2.2;
+
+        /// <summary>
+        /// How thick the shell's outline is, in device pixels — not grid units. The rail draws this
+        /// icon larger than the tab strip does, and a stroke that scaled with the box would come out
+        /// heavier in one place than the other, and heavier than the symbol-font icons beside it.
+        /// Keeping it in pixels is what makes every line on the rail the same weight.
+        /// </summary>
+        private const double ShellStroke = 1.2;
+
+        /// <summary>Pin diameter, in device pixels for the same reason.</summary>
+        private const double PinSize = 1.8;
+
         /// <summary>
         /// A serial console. Nothing identifies the far end of a cable, so the icon says what the
         /// link is instead of what is on it — and matches the rail icon that opened it.
@@ -26,39 +47,71 @@ namespace XCENA_Terminal_Dev.Controls
 
         /// <summary>
         /// The face of a DE-9 connector: a rounded trapezoid shell with nine pins, five over four.
-        /// Even-odd, so the two outlines read as a stroke and the pins inside the hole come back
-        /// filled.
+        /// Even-odd, so the pair of outlines reads as a stroke and the pins inside the hole come
+        /// back filled.
         /// <para>
         /// One set of coordinates, scaled to whatever box the caller has — the rail can afford more
-        /// room than a tab strip, and two hand-kept copies of the same drawing would drift.
+        /// room than a tab strip, and two hand-kept copies of the same drawing would drift. The
+        /// inner outline is derived from the outer one and the stroke rather than written down, so
+        /// the line cannot end up thicker at the corners than along the edges.
         /// </para>
         /// </summary>
         public static Geometry SerialGeometry(double size)
         {
-            double s = size / SerialGrid;
+            double scale = size / SerialGrid;
+
+            // The stroke and the pins are given in pixels, so convert them back to grid units.
+            double stroke = ShellStroke / scale;
+            double pin = PinSize / (2 * scale);
+
+            // The sides lean, so insetting them by the stroke means moving further than the stroke
+            // horizontally — the inset has to be perpendicular to the edge, not level with it.
+            double lean = (ShellBottomLeft - ShellLeft) / (ShellBottom - ShellTop);
+            double sideways = stroke * Math.Sqrt(1 + (lean * lean));
+
+            double innerTop = ShellTop + stroke;
+            double innerBottom = ShellBottom - stroke;
 
             var shell = new GeometryGroup { FillRule = FillRule.EvenOdd };
-            shell.Children.Add(Shell(0.6, 4.8, 21.4, 18.0, 17.2, 4.0, 2.2, s));
-            shell.Children.Add(Shell(2.95, 6.6, 19.05, 16.64, 15.4, 5.37, 1.2, s));
+
+            shell.Children.Add(Shell(
+                ShellLeft, ShellTop, ShellRight,
+                ShellBottomRight, ShellBottom, ShellBottomLeft,
+                ShellRadius, scale));
+
+            shell.Children.Add(Shell(
+                LeftEdgeAt(innerTop, lean) + sideways,
+                innerTop,
+                RightEdgeAt(innerTop, lean) - sideways,
+                RightEdgeAt(innerBottom, lean) - sideways,
+                innerBottom,
+                LeftEdgeAt(innerBottom, lean) + sideways,
+                // Concentric corners: a radius short by exactly the stroke keeps the ring even.
+                Math.Max(0.3, ShellRadius - stroke),
+                scale));
 
             foreach (double x in new[] { 5.4, 8.2, 11.0, 13.8, 16.6 })
             {
-                shell.Children.Add(Pin(x, 9.5, s));
+                shell.Children.Add(Pin(x, 9.5, pin, scale));
             }
 
             foreach (double x in new[] { 6.8, 9.6, 12.4, 15.2 })
             {
-                shell.Children.Add(Pin(x, 12.7, s));
+                shell.Children.Add(Pin(x, 12.7, pin, scale));
             }
 
             return shell;
         }
 
-        private static EllipseGeometry Pin(double x, double y, double scale) => new()
+        private static double LeftEdgeAt(double y, double lean) => ShellLeft + (lean * (y - ShellTop));
+
+        private static double RightEdgeAt(double y, double lean) => ShellRight - (lean * (y - ShellTop));
+
+        private static EllipseGeometry Pin(double x, double y, double radius, double scale) => new()
         {
             Center = new Point(x * scale, y * scale),
-            RadiusX = scale,
-            RadiusY = scale,
+            RadiusX = radius * scale,
+            RadiusY = radius * scale,
         };
 
         /// <summary>
@@ -118,7 +171,7 @@ namespace XCENA_Terminal_Dev.Controls
         {
             double dx = towards.X - from.X;
             double dy = towards.Y - from.Y;
-            double length = System.Math.Sqrt((dx * dx) + (dy * dy));
+            double length = Math.Sqrt((dx * dx) + (dy * dy));
 
             return length <= distance
                 ? towards

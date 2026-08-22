@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Web.WebView2.Core;
@@ -8,8 +9,9 @@ using XCENA_Terminal_Dev.Services;
 namespace XCENA_Terminal_Dev.Dialogs
 {
     /// <summary>
-    /// What this build is and where it keeps things. The WebView2 version is here because the
-    /// terminal is drawn by it: when rendering misbehaves, that number is the first question.
+    /// What this build is, what it is standing on, and where it keeps things. Every version is read
+    /// from what is actually loaded rather than written down, because a list that can go stale is
+    /// worse than no list when someone is trying to explain a rendering fault.
     /// </summary>
     public sealed partial class AboutDialog : ContentDialog
     {
@@ -17,8 +19,12 @@ namespace XCENA_Terminal_Dev.Dialogs
         {
             InitializeComponent();
 
-            VersionText.Text = Version();
+            VersionText.Text = $"Version {Version()}";
+            RuntimeText.Text = $"{RuntimeInformation.FrameworkDescription} · {RuntimeInformation.ProcessArchitecture}";
+            WinUiText.Text = AssemblyVersion(typeof(Application).Assembly);
             WebViewText.Text = WebViewVersion();
+            SshText.Text = AssemblyVersion(typeof(Renci.SshNet.SshClient).Assembly);
+            WindowsText.Text = RuntimeInformation.OSDescription;
             BaseText.Text = AppContext.BaseDirectory;
             DataText.Text = AppPaths.DataDirectory;
         }
@@ -38,9 +44,20 @@ namespace XCENA_Terminal_Dev.Dialogs
             string? informational = assembly
                 .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
 
-            return informational
-                ?? assembly.GetName().Version?.ToString()
-                ?? "unknown";
+            // A source-stamped version carries a "+commit" suffix that means nothing to a reader.
+            if (informational is { Length: > 0 })
+            {
+                int plus = informational.IndexOf('+');
+                return plus > 0 ? informational[..plus] : informational;
+            }
+
+            return assembly.GetName().Version?.ToString() ?? "unknown";
+        }
+
+        private static string AssemblyVersion(Assembly assembly)
+        {
+            string? file = assembly.GetCustomAttribute<AssemblyFileVersionAttribute>()?.Version;
+            return file ?? assembly.GetName().Version?.ToString() ?? "unknown";
         }
 
         private static string WebViewVersion()

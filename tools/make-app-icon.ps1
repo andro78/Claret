@@ -2,7 +2,7 @@ param([string]$OutDir, [string]$AppAssets, [string]$PackageImages)
 
 Add-Type -AssemblyName System.Drawing
 
-# PowerTerm mark: a yellow shell prompt (">_") on a burgundy plate.
+# Claret mark: a yellow shell prompt (">_") on a burgundy plate.
 # Drawn as geometry rather than text so it stays crisp from 16px to 256px.
 $Plate    = [System.Drawing.Color]::FromArgb(255, 140, 35,  50)   # #8C2332, the app accent
 $PlateTop = [System.Drawing.Color]::FromArgb(255, 162, 44,  62)   # #A22C3E
@@ -169,14 +169,40 @@ if ($AppAssets) {
 if ($PackageImages) {
     New-Item -ItemType Directory -Force -Path $PackageImages | Out-Null
     "package images -> $PackageImages"
-    # Sizes are fixed by the MSIX manifest: scale-200 assets are twice the base size.
-    Save-Png 50 (Join-Path $PackageImages 'StoreLogo.png')
-    Save-Png 88 (Join-Path $PackageImages 'Square44x44Logo.scale-200.png')
-    Save-Png 24 (Join-Path $PackageImages 'Square44x44Logo.targetsize-24_altform-unplated.png')
-    Save-Png 300 (Join-Path $PackageImages 'Square150x150Logo.scale-200.png')
-    Save-Png 48 (Join-Path $PackageImages 'LockScreenLogo.scale-200.png')
-    Save-WideMark 620  300 (Join-Path $PackageImages 'Wide310x150Logo.scale-200.png')
-    Save-WideMark 1240 600 (Join-Path $PackageImages 'SplashScreen.scale-200.png')
+
+    # The Store wants the whole scale ladder, not just scale-200: a 200% asset downscaled to
+    # 125% or 150% — the scale most laptops actually run at — comes out soft. The mark is drawn
+    # as geometry at each size instead, so every asset is sharp at its own resolution.
+    # Base sizes are fixed by the MSIX manifest; 125/150/200/400 are 1.25x/1.5x/2x/4x of them.
+    $Scales = @(100, 125, 150, 200, 400)
+
+    function Save-Ladder([int]$base, [string]$name) {
+        foreach ($scale in $Scales) {
+            $size = [int][Math]::Ceiling($base * $scale / 100.0)
+            Save-Png $size (Join-Path $PackageImages "$name.scale-$scale.png")
+        }
+    }
+
+    function Save-WideLadder([int]$w, [int]$h, [string]$name) {
+        foreach ($scale in $Scales) {
+            $sw = [int][Math]::Ceiling($w * $scale / 100.0)
+            $sh = [int][Math]::Ceiling($h * $scale / 100.0)
+            Save-WideMark $sw $sh (Join-Path $PackageImages "$name.scale-$scale.png")
+        }
+    }
+
+    Save-Ladder 50  'StoreLogo'
+    Save-Ladder 44  'Square44x44Logo'
+    Save-Ladder 150 'Square150x150Logo'
+    Save-WideLadder 310 150 'Wide310x150Logo'
+    Save-WideLadder 620 300 'SplashScreen'
+
+    # Taskbar and jump lists ask for an exact pixel size rather than a scale. The unplated
+    # variants keep the burgundy plate on purpose (see New-Icon) — only the name is "unplated".
+    foreach ($target in @(16, 24, 32, 48, 256)) {
+        Save-Png $target (Join-Path $PackageImages "Square44x44Logo.targetsize-$target.png")
+        Save-Png $target (Join-Path $PackageImages "Square44x44Logo.targetsize-${target}_altform-unplated.png")
+    }
 }
 
 if (-not $OutDir) { return }

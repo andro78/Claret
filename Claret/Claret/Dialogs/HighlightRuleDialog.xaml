@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="Claret.Dialogs.HighlightRuleDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="Highlight rule"
+    PrimaryButtonText="Save"
+    CloseButtonText="Cancel"
+    DefaultButton="Primary">
+
+    <StackPanel Spacing="12" Width="420">
+
+        <TextBox x:Name="PatternBox"
+                 Header="Text to highlight"
+                 PlaceholderText="error"
+                 TextChanged="OnPatternChanged" />
+
+        <CheckBox x:Name="IgnoreCaseCheck"
+                  Content="Ignore case"
+                  IsChecked="True" />
+
+        <StackPanel Spacing="4">
+            <TextBlock Text="Style" Style="{StaticResource CaptionTextBlockStyle}" />
+            <StackPanel Orientation="Horizontal" Spacing="16">
+                <RadioButton x:Name="BlockStyleRadio"
+                             Content="Block"
+                             GroupName="paintStyle"
+                             Checked="OnStyleChanged" />
+                <RadioButton x:Name="TextStyleRadio"
+                             Content="Text only"
+                             GroupName="paintStyle"
+                             Checked="OnStyleChanged" />
+            </StackPanel>
+        </StackPanel>
+
+        <StackPanel Spacing="4">
+            <TextBlock Text="Color" Style="{StaticResource CaptionTextBlockStyle}" />
+            <!-- Auto is first and the default: one less decision when adding a rule. -->
+            <StackPanel Orientation="Horizontal" Spacing="16">
+                <RadioButton x:Name="AutoColorRadio"
+                             Content="Auto"
+                             GroupName="colorMode"
+                             Checked="OnColorModeChanged" />
+                <RadioButton x:Name="CustomColorRadio"
+                             Content="Custom"
+                             GroupName="colorMode"
+                             Checked="OnColorModeChanged" />
+            </StackPanel>
+            <TextBlock x:Name="AutoColorNote"
+                       TextWrapping="Wrap"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       Text="The app picks a colour no other rule is using." />
+        </StackPanel>
+
+        <ColorPicker x:Name="Picker"
+                     IsAlphaEnabled="False"
+                     IsAlphaSliderVisible="False"
+                     IsAlphaTextInputVisible="False"
+                     IsHexInputVisible="True"
+                     ColorSpectrumShape="Box"
+                     ColorChanged="OnColorChanged" />
+
+        <TextBlock Text="Preview" Style="{StaticResource CaptionTextBlockStyle}" />
+        <Border CornerRadius="6"
+                BorderThickness="1"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                Background="#0C0C0C"
+                Padding="12">
+            <!--
+                Three pieces rather than one TextBlock with Runs: a Run has no background, and a
+                block highlight is a background. The middle chip is what the terminal would paint.
+            -->
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="kernel: "
+                           Foreground="#E6E6E6"
+                           FontFamily="Cascadia Mono, Consolas, monospace"
+                           FontSize="13" />
+                <Border x:Name="PreviewChip" CornerRadius="2">
+                    <TextBlock x:Name="PreviewText"
+                               Text="error"
+                               FontFamily="Cascadia Mono, Consolas, monospace"
+                               FontSize="13" />
+                </Border>
+                <TextBlock Text=" reading sector 42"
+                           Foreground="#E6E6E6"
+                           FontFamily="Cascadia Mono, Consolas, monospace"
+                           FontSize="13" />
+            </StackPanel>
+        </Border>
+
+        <InfoBar x:Name="Problem"
+                 IsOpen="False"
+                 IsClosable="False"
+                 Severity="Error" />
+    </StackPanel>
+</ContentDialog>

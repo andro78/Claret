@@ -1,25 +1,36 @@
-﻿# PowerTerm
+﻿# Claret
 
 WinUI 3 기반 SSH·시리얼 터미널 클라이언트. VT100/ANSI 에뮬레이션은 WebView2에 올린 xterm.js가,
 SSH 전송은 SSH.NET이 담당한다.
 
 쓰는 방법은 **[사용 설명서](docs/MANUAL.md)** 에 있다. 아래는 코드 구조와 빌드 방법이다.
 
-## 이름이 바뀌었다
+## 이름이 두 번 바뀌었다
 
-2026-08-22에 `XCENA Terminal` → `PowerTerm`으로 바꿨다. 히스토리는 그대로 이어진다 — 같은
-저장소이고, 파일 87개가 이동(rename)으로 추적된다. 저장소도 `andro78/PowerTerm`으로 바꿨다
-(예전 URL은 GitHub이 리다이렉트한다).
+- 2026-08-22: `XCENA Terminal` → `PowerTerm`
+- 2026-08-24: `PowerTerm` → **`Claret`**
 
-바꾸지 않은 것이 하나 있다. **DPAPI 엔트로피 문자열**(`Services/SecretProtector.cs`)은 옛 이름을
-그대로 둔다 — 그 문자열이 키의 일부라서, 바꾸면 이미 저장된 비밀번호를 하나도 못 푼다.
+두 번째 개명은 Microsoft Store에 올리기 위한 것이다. `PowerTerm`은 Ericom의 터미널
+에뮬레이터 제품군(PowerTerm InterConnect / WebConnect)에 쓰이는 이름이라, 스토어 이름 예약
+단계에서 막히거나 나중에 IP 신고로 내려갈 수 있었다. `Claret`은 버건디 와인의 붉은빛이고,
+아이콘 플레이트 색(`#8C2332`)과 그대로 이어진다.
 
-설정은 `%APPDATA%\PowerTerm`으로 옮겨졌고, 처음 실행할 때 `%APPDATA%\XCENA Terminal`의 `*.json`을
-복사해 온다(옛 폴더는 건드리지 않는다). 그래서 저장한 접속 목록·호스트 키·비밀번호가 그대로 열린다.
-옮겨온 뒤에는 옛 폴더를 지워도 된다.
+이름은 쓰이는 자리에 따라 두 가지다. **스토어 등록명과 패키지 표시명은 `Claret Terminal`**
+(Partner Center에 예약한 이름과 `Properties/DisplayName`이 정확히 같아야 한다), **시작 메뉴와
+제목줄은 `Claret`**(`uap:VisualElements/@DisplayName`). 스토어 검색에는 "terminal"이 들어간
+쪽이 유리하고, 쓸 때 보이는 이름은 짧은 쪽이 낫다.
 
-주의: **PowerTerm**은 Ericom의 터미널 에뮬레이터 제품군(PowerTerm InterConnect / WebConnect)에서
-쓰이는 이름이다. 사내에서만 쓸 것이라면 문제되지 않겠지만, 밖으로 내보낼 이름으로는 확인이 필요하다.
+히스토리는 그대로 이어진다 — 같은 저장소이고, 파일은 이동(rename)으로 추적된다. 저장소도
+`andro78/Claret`으로 바꿨다(예전 URL은 GitHub이 리다이렉트한다).
+
+바꾸지 않은 것이 하나 있다. **DPAPI 엔트로피 문자열**(`Services/SecretProtector.cs`)은 맨 처음
+이름을 그대로 둔다 — 그 문자열이 키의 일부라서, 바꾸면 이미 저장된 비밀번호를 하나도 못 푼다.
+개명이 두 번이 되어도 이 문자열은 계속 첫 이름이다.
+
+설정은 `%APPDATA%\Claret`으로 옮겨졌고, 처음 실행할 때 옛 폴더의 `*.json`을 복사해 온다 —
+`PowerTerm`을 먼저, 없으면 `XCENA Terminal`을 본다(`Services/AppPaths.cs`). 이미 있는 파일은
+덮어쓰지 않으므로 두 폴더가 다 있으면 최근 것이 이긴다. 옛 폴더는 건드리지 않으니, 옮겨온 뒤에
+지우면 된다. 저장한 접속 목록·호스트 키·비밀번호가 그대로 열린다.
 
 ## 구조
 
@@ -33,12 +44,12 @@ MainWindow                        사이드바 + 제목 줄 (전역 탭 스트�
              ├─ Assets/xterm/terminal.html   xterm 초기화, 키/마우스 처리
              └─ Services/SshSession          SSH.NET ShellStream 입출력
 
-Services/ProfileStore      %APPDATA%\PowerTerm\profiles.json
+Services/ProfileStore      %APPDATA%\Claret\profiles.json
 Services/SecretProtector   DPAPI(CurrentUser)로 비밀번호·passphrase 암호화
-Services/KnownHostsStore   %APPDATA%\PowerTerm\known_hosts.json
-Services/RecentStore       %APPDATA%\PowerTerm\recent.json (비밀 없음)
-Services/AppearanceStore   %APPDATA%\PowerTerm\appearance.json
-Services/LayoutStore       %APPDATA%\PowerTerm\layout.json (사이드바, 파일 표시, 다운로드 폴더)
+Services/KnownHostsStore   %APPDATA%\Claret\known_hosts.json
+Services/RecentStore       %APPDATA%\Claret\recent.json (비밀 없음)
+Services/AppearanceStore   %APPDATA%\Claret\appearance.json
+Services/LayoutStore       %APPDATA%\Claret\layout.json (사이드바, 파일 표시, 다운로드 폴더)
 Services/SshTeardown       SSH 연결 해제를 UI 스레드 밖에서 처리
 Services/SshConnectionFactory  ConnectionInfo 생성 + 호스트 키 핀 검증 (셸/SFTP 공용)
 Services/RemoteFileService     SFTP 조회 + 파일 업로드/다운로드
@@ -348,25 +359,25 @@ WebView2가 키보드 포커스를 가지므로 XAML 액셀러레이터가 보�
 
 ## 빌드 / 실행
 
-패키지(MSIX) 앱으로 구성돼 있다. Visual Studio에서 `PowerTerm (Package)`를
+패키지(MSIX) 앱으로 구성돼 있다. Visual Studio에서 `Claret (Package)`를
 시작 프로젝트로 두고 F5로 실행한다.
 
-`bin\x64\Debug\net8.0-...\PowerTerm.exe`는 **더블클릭으로 실행되지 않는다.**
+`bin\x64\Debug\net8.0-...\Claret.exe`는 **더블클릭으로 실행되지 않는다.**
 패키지 컨텍스트가 없으면 WinUI 활성화가 `REGDB_E_CLASSNOTREG`로 실패한다. 탐색기에서
 바로 실행할 exe가 필요하면 언패키지로 빌드한다(Windows App SDK 2.3 런타임 필요 — 이미
 설치돼 있음):
 
 ```powershell
-cd PowerTerm\PowerTerm
-dotnet build PowerTerm.csproj `
+cd Claret\Claret
+dotnet build Claret.csproj `
   -c Debug -p:Platform=x64 -p:WindowsPackageType=None `
   -p:OutputPath=bin\Run-x64\
 ```
 
-산출물: `PowerTerm\PowerTerm\bin\Run-x64\PowerTerm.exe`
+산출물: `Claret\Claret\bin\Run-x64\Claret.exe`
 
 `OutputPath`는 **프로젝트 디렉터리 기준 상대 경로**다. 저장소 루트에서 긴 경로를 그대로
-넘기면 `PowerTerm\PowerTerm\PowerTerm\...`처럼 한 단계 더
+넘기면 `Claret\Claret\Claret\...`처럼 한 단계 더
 중첩된 곳에 출력이 생기고, `bin\Run-x64`에는 예전 파일만 남아 실행 시 ".NET을 설치하라"는
 대화상자가 뜬다. 그래서 위처럼 프로젝트 디렉터리에서 실행한다.
 
@@ -380,19 +391,22 @@ dotnet build PowerTerm.csproj `
 쪽은 아무것도 설치하지 않는다.
 
 ```powershell
-dotnet publish PowerTerm\PowerTerm\PowerTerm.csproj `
+dotnet publish Claret\Claret\Claret.csproj `
   -c Release -p:Platform=x64 -p:PublishProfile=standalone-x64
 ```
 
-산출물: `PowerTerm\PowerTerm\bin\Publish\standalone-x64\`
+산출물: `Claret\Claret\bin\Publish\standalone-x64\`
 (522개 파일 / 274 MB, zip 압축 시 약 102 MB). 폴더째 zip으로 묶어 전달하면 압축을 풀고
-`PowerTerm.exe`를 바로 실행할 수 있다.
+`Claret.exe`를 바로 실행할 수 있다.
 
 **받는 쪽 요구사항은 WebView2 런타임 하나뿐이다.** Windows 11에는 기본 포함이고 Windows
 10도 Edge 업데이트로 대개 설치돼 있다. 없으면 터미널 오버레이가 설치 링크를 안내한다.
 
+이 zip 경로는 **Windows 10에서도 계속 동작한다.** 최소 OS를 Windows 11로 올린 것은 MSIX
+매니페스트뿐이다(아래 스토어 절 참고) — 언패키지 게시에는 매니페스트 하한선이 없다.
+
 설정 파일(`profiles.json` 등)은 실행 파일 옆이 아니라 사용자별
-`%APPDATA%\PowerTerm\`에 만들어지므로, 같은 폴더를 여러 사람이 공유해도 서로 섞이지
+`%APPDATA%\Claret\`에 만들어지므로, 같은 폴더를 여러 사람이 공유해도 서로 섞이지
 않는다.
 
 주의 — **언패키지 게시는 컴파일된 XAML(`*.xbf`)과 앱 리소스 인덱스(`*.pri`)를 게시 폴더에
@@ -407,6 +421,63 @@ MSIX로 배포/등록할 때는 Windows **개발자 모드**가 켜져 있어야
 `PublishTrimmed`는 끈 상태다 — SSH.NET이 암호 알고리즘을 리플렉션으로 찾기 때문에
 트리밍하면 런타임에 깨진다.
 
+## Microsoft Store 등록
+
+WinUI 3 + `runFullTrust` 데스크톱 앱은 스토어가 정식으로 받는 형태이고, 패키징 프로젝트가
+이미 있으므로 새로 만들 것은 없다. 준비해 둔 것과 남은 것을 갈라 적는다.
+
+### 준비된 것
+
+- **제한 용량 정리.** 매니페스트에 `systemAIModels`가 선언돼 있었지만 코드에서 쓰지 않았다.
+  제한 용량(restricted capability)은 정당화하지 못하면 인증에서 떨어지므로 지웠다. 남은
+  `runFullTrust`는 Win32 패키징 앱의 표준이라 문제되지 않는다
+- **최소 OS = Windows 11 (10.0.22000).** WebView2 런타임을 MSIX가 설치해 줄 수 없는데
+  Win11에는 기본 포함이라, 최소 버전을 올리는 것이 런타임 150MB를 패키지에 넣는 것보다 싸다.
+  Win10 사용자는 위의 자체 포함 zip으로 계속 쓸 수 있다. 매니페스트의 `TargetDeviceFamily`,
+  두 프로젝트의 `TargetPlatformMinVersion`이 함께 22000이다
+  (csproj의 `TargetFramework`는 그보다 낮을 수 없어 26100으로 올렸다 — NETSDK1135)
+- **이미지 자산 35장.** 배율 사다리 전체 + 픽셀 지정 변형. `## 앱 아이콘` 절 참고
+- **문서 3종.** `LICENSE`(MIT), `THIRD-PARTY-NOTICES.md`, `docs/PRIVACY.md`
+- **이름.** 스토어 등록명 `Claret Terminal`, 시작 메뉴 표시명 `Claret`
+
+### 남은 것
+
+**1. Partner Center 계정.** **개인(Individual) 계정**으로 등록한다(일회성 약 $19, 법인 검증
+없음). 이 앱은 개인 프로젝트다 — 첫 이름이 `XCENA Terminal`이었지만 회사 산출물이 아니고,
+커밋도 전부 개인 계정(`andro78`) 명의다. 그래서 발행자는 개인이고, `LICENSE`의 저작권자와
+매니페스트의 `CN=윤준호` / `PublisherDisplayName`은 **지금 값이 이미 맞다.**
+
+**2. Identity 3종 교체.** 이름을 예약하면 Partner Center가 값을 발급한다. **하나라도 다르면
+업로드가 거부된다.**
+
+| `Package.appxmanifest` | 지금 | 넣을 값 |
+|---|---|---|
+| `Identity/@Name` | `795b8aff-…` (임의 GUID) | Partner Center의 패키지 ID |
+| `Identity/@Publisher` | `CN=윤준호` | 발급된 `CN=…` 문자열 그대로 |
+| `Properties/PublisherDisplayName` | `윤준호` | 발급된 표시 이름 |
+
+`Properties/DisplayName`(`Claret Terminal`)은 **예약한 이름과 정확히 같아야** 한다.
+
+**3. 개인정보처리방침 URL.** `docs/PRIVACY.md`를 공개 URL로 올린다(GitHub Pages 또는 저장소
+raw URL도 받아 준다). 내용과 연락처는 채워져 있다.
+
+**4. 스크린샷과 스토어 설명.** 패키지에는 없는, Partner Center에 직접 올리는 자료다.
+
+### 제출 패키지 만들기
+
+스토어가 재서명하므로 `AppxPackageSigningEnabled=false`인 채로 세 아키텍처를 묶은
+`.msixupload`를 만들면 된다.
+
+```powershell
+msbuild "Claret\Claret (Package)\Claret (Package).wapproj" /restore `
+  /p:Configuration=Release /p:AppxBundle=Always `
+  /p:AppxBundlePlatforms="x86|x64|arm64" `
+  /p:UapAppxPackageBuildMode=StoreUpload /p:AppxPackageSigningEnabled=false
+```
+
+산출물은 `AppPackages\` 아래에 생긴다. 올리기 전에 **WACK**(Windows App Certification Kit)을
+로컬에서 한 번 돌려 시리얼 포트·WMI 사용이 걸리지 않는지 확인한다.
+
 
 ## 앱 아이콘
 
@@ -418,8 +489,8 @@ MSIX로 배포/등록할 때는 Windows **개발자 모드**가 켜져 있어야
 ```powershell
 # 앱 아이콘(.ico) + MSIX 타일 이미지를 다시 생성
 powershell -ExecutionPolicy Bypass -File tools\make-app-icon.ps1 `
-  -AppAssets "PowerTerm\PowerTerm\Assets" `
-  -PackageImages "PowerTerm\PowerTerm (Package)\Images"
+  -AppAssets "Claret\Claret\Assets" `
+  -PackageImages "Claret\Claret (Package)\Images"
 ```
 
 - `.ico`에는 16/20/24/32/40/48/64/128/256을 담는다. **20px 이하는 캐럿(`_`)을 빼고 셰브런만
@@ -427,10 +498,16 @@ powershell -ExecutionPolicy Bypass -File tools\make-app-icon.ps1 `
 - `Assets\AppIcon.ico`는 `ApplicationIcon`으로 exe에 박히고(탐색기), 동시에 출력 폴더로 복사해
   `AppWindow.SetIcon`으로 창에 지정한다(작업표시줄·Alt+Tab). 제목줄을 직접 그리는 앱이라
   **언패키지 창은 exe 아이콘을 자동으로 물려받지 않으므로** 두 경로가 모두 필요하다
-- 무배경 변형(`altform-unplated`)만 노랑이 아니라 버건디로 그린다 - 플레이트가 없어 셸이 깔아 주는
-  배경 위에 얹히는데, 밝은 작업표시줄에 노랑을 올리면 거의 안 보인다
-- MSIX 타일은 매니페스트가 크기를 고정한다(`scale-200`은 기준 크기의 2배). 정사각 타일은 플레이트
-  포함, `targetsize-24_altform-unplated`는 배경 없이 버건디 마크만 그린다
+- 무배경 변형(`altform-unplated`)도 플레이트를 그대로 그린다 — 이름만 unplated다. 셸이 깔아 주는
+  배경 위에 마크만 얹으면 밝은 작업표시줄에서 노랑이 거의 안 보이므로, 항상 버건디 위에 앉힌다
+- MSIX 이미지는 **배율 사다리 전체**(scale-100/125/150/200/400)와 픽셀 지정
+  변형(`targetsize-16/24/32/48/256`, 각각 plated·unplated)을 함께 낸다 — 35장이다. 스토어가
+  권장하는 구성이고, 무엇보다 125%·150% DPI에서 200% 자산을 축소해 쓰면 흐려진다. 크기마다
+  다시 그리므로 사다리를 늘려도 파일만 늘고 품질은 떨어지지 않는다
+- 기준 크기는 매니페스트가 정하고(`Square44x44`는 44, `SplashScreen`은 620×300 …) 배율은
+  그것의 1.25·1.5·2·4배를 **올림**한다 — Microsoft가 문서에 적어 둔 값(63, 188, 388 …)과 맞춘다
+- `.wapproj`는 이 35장을 `Images\*.png` 와일드카드 하나로 잡는다. 사다리를 고칠 때 프로젝트
+  파일을 같이 고쳐야 하는 일이 없도록
 
 ## 렌더링 참고
 

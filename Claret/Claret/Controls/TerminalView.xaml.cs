@@ -628,7 +628,7 @@ namespace Claret.Controls
                 case 'c': // copy request
                     if (TryDecodeBase64(body, out byte[] selectionBytes))
                     {
-                        CopyToClipboard(Encoding.UTF8.GetString(selectionBytes));
+                        _ = CopyToClipboardAsync(Encoding.UTF8.GetString(selectionBytes));
                     }
 
                     break;
@@ -693,16 +693,51 @@ namespace Claret.Controls
             _session?.Resize(cols, rows);
         }
 
-        private static void CopyToClipboard(string text)
+        /// <summary>
+        /// Puts the selection on the Windows clipboard. Windows allows one clipboard owner at a
+        /// time, so another process holding it open makes a single attempt fail for no lasting
+        /// reason — that one is retried. A failure that survives the retry is said out loud: a
+        /// copy that quietly does not happen reads as a broken terminal.
+        /// </summary>
+        private async Task CopyToClipboardAsync(string text)
         {
             if (string.IsNullOrEmpty(text))
             {
                 return;
             }
 
-            var package = new DataPackage { RequestedOperation = DataPackageOperation.Copy };
-            package.SetText(text);
-            Clipboard.SetContent(package);
+            for (int attempt = 0; attempt < 2; attempt++)
+            {
+                try
+                {
+                    var package = new DataPackage { RequestedOperation = DataPackageOperation.Copy };
+                    package.SetText(text);
+                    Clipboard.SetContent(package);
+                }
+                catch (Exception ex)
+                {
+                    if (attempt == 0)
+                    {
+                        await Task.Delay(80).ConfigureAwait(true);
+                        continue;
+                    }
+
+                    PostNotice($"Copy failed: {ex.GetType().Name}: {ex.Message}");
+                    return;
+                }
+
+                // Hands the data to the clipboard itself so it outlives this process. Worth
+                // asking for, not worth failing over: the copy has already happened.
+                try
+                {
+                    Clipboard.Flush();
+                }
+                catch (Exception)
+                {
+                }
+
+                return;
+            }
         }
 
         private async Task PasteFromClipboardAsync()
@@ -716,9 +751,11 @@ namespace Claret.Controls
                     text = await view.GetTextAsync();
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Another process may hold the clipboard open; silently skip the paste.
+                // Another process may hold the clipboard open. Say which failure it was rather
+                // than skipping in silence, which looks the same as the paste key doing nothing.
+                PostNotice($"Paste failed: {ex.GetType().Name}: {ex.Message}");
                 return;
             }
 

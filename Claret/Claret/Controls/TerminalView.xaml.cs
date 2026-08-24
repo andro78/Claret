@@ -641,6 +641,18 @@ namespace Claret.Controls
                     AutoApproved?.Invoke(this, body);
                     break;
 
+                case 'e': // the page reporting its own trouble
+                    // The page has posted these since it was written and nothing was listening,
+                    // so a WebGL addon that failed to load or a theme patch that would not parse
+                    // left no trace anywhere. They are rare and each one explains something the
+                    // user can otherwise only guess at, so they are shown rather than logged.
+                    if (!string.IsNullOrWhiteSpace(body))
+                    {
+                        PostNotice(body);
+                    }
+
+                    break;
+
                 case 'k': // window-level chord
                     RaiseCommand(body);
                     break;
@@ -649,6 +661,18 @@ namespace Claret.Controls
 
         private void RaiseCommand(string name)
         {
+            // The one command the view answers itself, because it acts on this view's WebView
+            // rather than on the window. DevTools are enabled in a debug build but there is no
+            // way in without this: F12 belongs to AreBrowserAcceleratorKeysEnabled, which is off
+            // so the browser cannot steal terminal keys, and right-click is taken by paste.
+            if (name == "devtools")
+            {
+#if DEBUG
+                Web.CoreWebView2?.OpenDevToolsWindow();
+#endif
+                return;
+            }
+
             TerminalCommand? command = name switch
             {
                 "newtab" => TerminalCommand.NewTab,

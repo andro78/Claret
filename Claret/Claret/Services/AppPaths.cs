@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Linq;
 
 namespace Claret.Services
 {
@@ -37,7 +38,7 @@ namespace Claret.Services
             string root = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
             string dir = Path.Combine(root, "Claret");
 
-            bool fresh = !Directory.Exists(dir);
+            bool fresh = HasNoSettings(dir);
             Directory.CreateDirectory(dir);
 
             if (fresh)
@@ -51,6 +52,27 @@ namespace Claret.Services
             }
 
             return dir;
+        }
+
+        /// <summary>
+        /// Whether the folder holds no settings yet — which is not the same question as whether it
+        /// exists. Something else may have made it first: an installer, a file-sync client, or a
+        /// build that started once and was closed before it wrote anything. Keying the carry-over
+        /// on existence alone means an empty folder like that quietly costs the user every saved
+        /// connection, with no way to ask for them back short of copying files by hand.
+        /// </summary>
+        private static bool HasNoSettings(string dir)
+        {
+            try
+            {
+                return !Directory.Exists(dir) || !Directory.EnumerateFiles(dir, "*.json").Any();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Unreadable is not the same as empty. Carrying files in on top of settings that
+                // are there but cannot be listed would be the one outcome worse than doing nothing.
+                return false;
+            }
         }
 
         /// <summary>

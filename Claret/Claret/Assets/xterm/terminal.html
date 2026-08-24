@@ -537,20 +537,57 @@
                 return false;
             }
 
+            /*
+                With a Korean IME switched on, a keydown it has looked at arrives as key
+                "Process" with keyCode 229 — whether or not the IME will actually consume it. Two
+                things follow for the chords below. The composition gate cannot treat 229 alone as
+                "this belongs to the IME", and the chords cannot be matched on ev.key. ev.code
+                carries the physical key whatever the IME does, so it is the fallback.
+            */
+            function chordKey(ev) {
+                if (ev.key && ev.key !== 'Process' && ev.key !== 'Unidentified') {
+                    return ev.key;
+                }
+
+                var code = ev.code || '';
+                if (code.length === 4 && code.indexOf('Key') === 0) {
+                    return code.charAt(3);          // KeyC -> C
+                }
+                if (code.indexOf('Digit') === 0) {
+                    return code.slice(5);           // Digit0 -> 0
+                }
+                if (code === 'Equal') {
+                    return '=';
+                }
+                if (code === 'Minus') {
+                    return '-';
+                }
+
+                return code || ev.key || '';
+            }
+
             term.attachCustomKeyEventHandler(function (ev) {
                 if (ev.type !== 'keydown') {
                     return true;
                 }
                 // Mid-composition (Hangul, kana, pinyin) every key belongs to the IME. Claiming
                 // one here would commit or drop a syllable half-built.
-                if (ev.isComposing || ev.keyCode === 229) {
+                if (ev.isComposing) {
                     return true;
                 }
-                if (ev.ctrlKey && ev.shiftKey && (ev.key === 'C' || ev.key === 'c')) {
+                // A chord holding Ctrl or Alt is never IME text input, so the 229 marker on its
+                // own must not swallow it. It used to, which left every shortcut below dead the
+                // moment the keyboard was in Hangul mode — copy and paste among them.
+                if (ev.keyCode === 229 && !ev.ctrlKey && !ev.altKey) {
+                    return true;
+                }
+
+                var key = chordKey(ev);
+                if (ev.ctrlKey && ev.shiftKey && (key === 'C' || key === 'c')) {
                     copySelection();
                     return claim(ev);
                 }
-                if (ev.ctrlKey && ev.shiftKey && (ev.key === 'V' || ev.key === 'v')) {
+                if (ev.ctrlKey && ev.shiftKey && (key === 'V' || key === 'v')) {
                     post('v');
                     return claim(ev);
                 }
@@ -558,7 +595,7 @@
                 // Plain Ctrl+C copies a selection only when copy-on-select is off. With it on the
                 // selection is already on the clipboard, so Ctrl+C stays SIGINT — otherwise a
                 // selection left on screen would swallow the interrupt, which a terminal must not do.
-                if (ev.ctrlKey && !ev.shiftKey && !ev.altKey && (ev.key === 'C' || ev.key === 'c')) {
+                if (ev.ctrlKey && !ev.shiftKey && !ev.altKey && (key === 'C' || key === 'c')) {
                     if (copyOnSelect || !term.hasSelection()) {
                         return true;
                     }
@@ -567,13 +604,13 @@
                     term.clearSelection();
                     return claim(ev);
                 }
-                if (ev.ctrlKey && !ev.shiftKey && !ev.altKey && (ev.key === 'V' || ev.key === 'v')) {
+                if (ev.ctrlKey && !ev.shiftKey && !ev.altKey && (key === 'V' || key === 'v')) {
                     post('v');
                     return claim(ev);
                 }
                 // Cycle sessions. Ctrl+Tab is not a terminal sequence (Tab is Ctrl+I), so it is
                 // safe to swallow here.
-                if (ev.ctrlKey && !ev.altKey && ev.key === 'Tab') {
+                if (ev.ctrlKey && !ev.altKey && key === 'Tab') {
                     post(ev.shiftKey ? 'kprevtab' : 'knexttab');
                     return claim(ev);
                 }
@@ -581,7 +618,7 @@
                 // Window-level commands: the WebView owns keyboard focus, so XAML accelerators
                 // never see these. Forward them to the host instead.
                 if (ev.ctrlKey && ev.shiftKey) {
-                    var upper = ev.key.toUpperCase();
+                    var upper = key.toUpperCase();
                     if (upper === 'T') { post('knewtab'); return claim(ev); }
                     if (upper === 'W') { post('kclosesession'); return claim(ev); }
                     if (upper === 'B') { post('ksidebar'); return claim(ev); }
@@ -589,15 +626,15 @@
 
                 // Tile every open session, or fold back to single view.
                 if (ev.altKey && ev.shiftKey && !ev.ctrlKey) {
-                    if (ev.key === '+' || ev.key === '=') { post('ktileside'); return claim(ev); }
-                    if (ev.key === '-' || ev.key === '_') { post('ktilestack'); return claim(ev); }
+                    if (key === '+' || key === '=') { post('ktileside'); return claim(ev); }
+                    if (key === '-' || key === '_') { post('ktilestack'); return claim(ev); }
                 }
 
                 // Font size, matching Windows Terminal's bindings.
                 if (ev.ctrlKey && !ev.shiftKey && !ev.altKey) {
-                    if (ev.key === '=' || ev.key === '+') { changeFontSize(1); return claim(ev); }
-                    if (ev.key === '-' || ev.key === '_') { changeFontSize(-1); return claim(ev); }
-                    if (ev.key === '0') { setFontSize(14); return claim(ev); }
+                    if (key === '=' || key === '+') { changeFontSize(1); return claim(ev); }
+                    if (key === '-' || key === '_') { changeFontSize(-1); return claim(ev); }
+                    if (key === '0') { setFontSize(14); return claim(ev); }
                 }
 
                 return true;

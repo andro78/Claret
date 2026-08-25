@@ -502,12 +502,35 @@ namespace Claret
             }
         }
 
-        private void OnForgetHostKeyClick(object sender, RoutedEventArgs e)
+        private async void OnForgetHostKeyClick(object sender, RoutedEventArgs e)
         {
-            if (ResolveProfile(sender) is ConnectionProfile profile)
+            if (ResolveProfile(sender) is not ConnectionProfile profile)
             {
-                KnownHostsStore.Instance.Forget(profile.Host, profile.Port);
+                return;
             }
+
+            HostKeyForgetResult result = KnownHostsStore.Instance.Forget(profile.Host, profile.Port);
+
+            string message = result switch
+            {
+                HostKeyForgetResult.NotFound =>
+                    $"No pinned host key was found for {profile.Host}:{profile.Port} on this profile. " +
+                    "If another profile points at the same server under a different address, forget it there instead.",
+                HostKeyForgetResult.RemovedButNotSaved =>
+                    $"Forgot the host key for {profile.Host}:{profile.Port}, but could not save that to disk — " +
+                    "it may come back the next time the app starts. Check that known_hosts.json isn't read-only or locked.",
+                _ => $"Forgot the host key for {profile.Host}:{profile.Port}. Reconnecting will pin whatever key the server presents next.",
+            };
+
+            var dialog = new ContentDialog
+            {
+                XamlRoot = RootGrid.XamlRoot,
+                Title = "Forget host key",
+                Content = message,
+                CloseButtonText = "OK",
+            };
+
+            await ShowDialogAsync(dialog);
         }
 
         private async void OnDeleteProfileClick(object sender, RoutedEventArgs e)

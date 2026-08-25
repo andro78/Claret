@@ -17,6 +17,19 @@ namespace Claret.Services
         Mismatch,
     }
 
+    /// <summary>Outcome of <see cref="KnownHostsStore.Forget"/>, so a caller can tell the user what actually happened.</summary>
+    internal enum HostKeyForgetResult
+    {
+        /// <summary>Nothing was pinned for that host:port — most likely the wrong profile was targeted.</summary>
+        NotFound,
+
+        /// <summary>Removed and persisted to disk.</summary>
+        Removed,
+
+        /// <summary>Removed from memory, but the write to disk failed — it will reappear after a restart.</summary>
+        RemovedButNotSaved,
+    }
+
     /// <summary>
     /// Trust-on-first-use host key pinning. The first key seen for an endpoint is stored; any later
     /// change is reported as a mismatch instead of being silently accepted.
@@ -53,7 +66,7 @@ namespace Claret.Services
         }
 
         /// <summary>Drops the pinned key for an endpoint so the next connect re-pins it.</summary>
-        public void Forget(string host, int port)
+        public HostKeyForgetResult Forget(string host, int port)
         {
             lock (_gate)
             {
@@ -69,15 +82,17 @@ namespace Claret.Services
                     }
                 }
 
+                if (stale.Count == 0)
+                {
+                    return HostKeyForgetResult.NotFound;
+                }
+
                 foreach (string key in stale)
                 {
                     _fingerprints.Remove(key);
                 }
 
-                if (stale.Count > 0)
-                {
-                    TrySave();
-                }
+                return TrySave() ? HostKeyForgetResult.Removed : HostKeyForgetResult.RemovedButNotSaved;
             }
         }
 
@@ -115,7 +130,7 @@ namespace Claret.Services
             }
         }
 
-        private void TrySave()
+        private bool TrySave()
         {
             try
             {
@@ -123,10 +138,12 @@ namespace Claret.Services
                 string temp = AppPaths.KnownHostsFile + ".tmp";
                 File.WriteAllText(temp, json);
                 File.Move(temp, AppPaths.KnownHostsFile, overwrite: true);
+                return true;
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 // Non-fatal: pinning simply will not persist across restarts.
+                return false;
             }
         }
     }

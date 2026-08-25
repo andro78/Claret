@@ -517,7 +517,7 @@ namespace Claret.Controls
             {
                 ShowTransfer($"Downloading {entry.Name}", 0);
 
-                var progress = new Progress<ulong>(bytes => ShowTransfer(
+                var progress = new ThrottledProgress<ulong>(bytes => ShowTransfer(
                     $"Downloading {entry.Name} — {RemoteEntry.FormatSize((long)bytes)} of {entry.SizeText}",
                     Fraction((long)bytes, entry.Length)));
 
@@ -849,7 +849,7 @@ namespace Claret.Controls
                     long baseline = sent;
                     ShowTransfer($"Uploading {label}", Fraction(baseline, total));
 
-                    var progress = new Progress<ulong>(bytes =>
+                    var progress = new ThrottledProgress<ulong>(bytes =>
                         ShowTransfer($"Uploading {label}", Fraction(baseline + (long)bytes, total)));
 
                     await service.UploadAsync(path, remote, overwrite, progress, cts.Token);
@@ -1019,7 +1019,7 @@ namespace Claret.Controls
                     string label = $"{done + skipped + 1}/{scan.FileCount} — {item.Relative}";
                     ShowTransfer($"Uploading {label}", Fraction(baseline, scan.TotalBytes));
 
-                    var progress = new Progress<ulong>(bytes => ShowTransfer(
+                    var progress = new ThrottledProgress<ulong>(bytes => ShowTransfer(
                         $"Uploading {label}",
                         Fraction(baseline + (long)bytes, scan.TotalBytes)));
 
@@ -1169,7 +1169,7 @@ namespace Claret.Controls
                     string label = $"{done + skipped + 1}/{scan.FileCount} — {item.Relative}";
                     ShowTransfer($"Downloading {label}", Fraction(baseline, scan.TotalBytes));
 
-                    var progress = new Progress<ulong>(bytes => ShowTransfer(
+                    var progress = new ThrottledProgress<ulong>(bytes => ShowTransfer(
                         $"Downloading {label}",
                         Fraction(baseline + (long)bytes, scan.TotalBytes)));
 
@@ -1391,11 +1391,18 @@ namespace Claret.Controls
         private void ShowTransfer(string message, double? progress)
         {
             Transfer.Visibility = Visibility.Visible;
-            TransferText.Text = message;
             TransferBar.Visibility = progress is null ? Visibility.Collapsed : Visibility.Visible;
+
             if (progress is { } value)
             {
+                string percent = $"{value * 100:F2}%";
+                TransferText.Text = $"{message} ({percent})";
                 TransferBar.Value = value;
+                ToolTipService.SetToolTip(TransferBar, percent);
+            }
+            else
+            {
+                TransferText.Text = message;
             }
 
             ToolTipService.SetToolTip(TransferCancelButton, _transfer is null ? "Dismiss" : "Cancel upload");
@@ -1424,5 +1431,40 @@ namespace Claret.Controls
                 "The server does not offer the SFTP subsystem.",
             _ => ex.Message,
         };
+    }
+
+    /// <summary>
+    /// Wraps a progress callback so only a few updates a second reach the UI thread. SSH.NET
+    /// reports upload/download progress once per write chunk — for a large file over a fast link
+    /// that is hundreds of callbacks a second, each normally marshaled onto the UI thread via
+    /// <see cref="Progress{T}"/>. That is enough to starve terminal rendering and keyboard input
+    /// for the whole window, so the throttle is checked on the reporting thread, before anything
+    /// is posted.
+    /// </summary>
+    internal sealed class ThrottledProgress<T> : IProgress<T>
+    {
+        private readonly IProgress<T> _inner;
+        private readonly long _intervalMs;
+        private long _lastReportMs;
+        private bool _reported;
+
+        public ThrottledProgress(Action<T> report, long intervalMs = 100)
+        {
+            _inner = new Progress<T>(report);
+            _intervalMs = intervalMs;
+        }
+
+        public void Report(T value)
+        {
+            long now = Environment.TickCount64;
+            if (_reported && now - _lastReportMs < _intervalMs)
+            {
+                return;
+            }
+
+            _reported = true;
+            _lastReportMs = now;
+            _inner.Report(value);
+        }
     }
 }

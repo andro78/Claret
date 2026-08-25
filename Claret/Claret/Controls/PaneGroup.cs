@@ -38,7 +38,7 @@ namespace Claret.Controls
         private const double CardCorner = 8;
 
         /// <summary>Payload text; the drag is in-process, so the real handoff is <see cref="_drag"/>.</summary>
-        private const string DragPayload = "powerterm-tab";
+        private const string DragPayload = "claret-tab";
 
         private readonly Border _frame;
         private readonly TabDragContext _drag;

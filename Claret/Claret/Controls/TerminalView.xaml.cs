@@ -417,6 +417,17 @@ namespace Claret.Controls
         /// <summary>This pane's own terminal font size, independent of every other open pane.</summary>
         public int TerminalFontSize => _fontSize;
 
+        /// <summary>This pane's own background colour, independent of every other open pane — for
+        /// syncing the surrounding pane frame to whichever tab is actually showing.</summary>
+        public Windows.UI.Color TerminalBackgroundColor => (_appearance ?? new TerminalAppearance()).BackgroundColor;
+
+        /// <summary>
+        /// A snapshot of this pane's own colours and font, both independent of every other open
+        /// pane — safe to hand to a dialog (or another pane) without either side mutating the
+        /// original. A pane that has never had an appearance applied yet reports the defaults.
+        /// </summary>
+        public TerminalAppearance CurrentAppearance => (_appearance ?? new TerminalAppearance()).Clone();
+
         /// <summary>Changes only this pane's font — family and size — leaving its colours, and
         /// every other pane's font, untouched.</summary>
         public void ApplyFont(string family, int size)

@@ -133,6 +133,10 @@ namespace Claret.Controls
             if (_appearance is not null)
             {
                 view.ApplyAppearance(_appearance);
+
+                // A card holds several tabs but shows one frame; a brand-new tab starts out
+                // selected, so its own starting colours are what the frame should show too.
+                RefreshPaneFrame(view);
             }
 
             if (_highlights is not null)
@@ -753,9 +757,17 @@ namespace Claret.Controls
             };
             group.SelectionChanged += (s, _) =>
             {
-                if (LeafOf((PaneGroup)s!) is { } leaf)
+                var g = (PaneGroup)s!;
+                if (LeafOf(g) is { } leaf)
                 {
                     SetActive(leaf, notify: false);
+                }
+
+                // Colours are per-tab now, so the switched-to tab's own background is what the
+                // frame around it should show — not whatever the previously selected tab had.
+                if (g.SelectedSession is { } selected)
+                {
+                    g.ApplyBackground(selected.TerminalBackgroundColor);
                 }
 
                 ActiveSessionChanged?.Invoke(this, EventArgs.Empty);
@@ -1178,6 +1190,10 @@ namespace Claret.Controls
             var font = new MenuFlyoutItem { Text = "Font…" };
             font.Click += (_, _) => FontRequested?.Invoke(this, view);
 
+            // Same story as font: only this pane's colours change.
+            var colors = new MenuFlyoutItem { Text = "Colors…" };
+            colors.Click += (_, _) => ColorsRequested?.Invoke(this, view);
+
             var breakItem = new MenuFlyoutItem { Text = "Send break" };
             breakItem.Click += (_, _) => view.SendBreak();
 
@@ -1188,6 +1204,7 @@ namespace Claret.Controls
             menu.Items.Add(new MenuFlyoutSeparator());
             menu.Items.Add(log);
             menu.Items.Add(font);
+            menu.Items.Add(colors);
             menu.Items.Add(breakItem);
             menu.Items.Add(new MenuFlyoutSeparator());
             menu.Items.Add(close);
@@ -1227,6 +1244,23 @@ namespace Claret.Controls
 
         /// <summary>The user asked to change just this tab's font.</summary>
         public event EventHandler<TerminalView>? FontRequested;
+
+        /// <summary>The user asked to change just this tab's colours.</summary>
+        public event EventHandler<TerminalView>? ColorsRequested;
+
+        /// <summary>
+        /// Re-reads a pane's surrounding frame colour from whichever tab is currently selected in
+        /// it. A card holds several tabs but only one frame, so it always follows the one actually
+        /// on screen — call this after changing a tab's own colours, in case that tab is the one
+        /// showing right now.
+        /// </summary>
+        public void RefreshPaneFrame(TerminalView view)
+        {
+            if (LeafOf(view) is { } leaf && ReferenceEquals(leaf.Group.SelectedSession, view))
+            {
+                leaf.Group.ApplyBackground(view.TerminalBackgroundColor);
+            }
+        }
 
         private void SplitTab(TerminalView view, Orientation orientation)
         {

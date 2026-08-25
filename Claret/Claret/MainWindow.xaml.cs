@@ -167,6 +167,7 @@ namespace Claret
             _surface.AutoApproved += OnSurfaceAutoApproved;
             _surface.LogRequested += (_, view) => _ = ToggleSessionLogAsync(view);
             _surface.FontRequested += (_, view) => _ = ApplyFontToPaneAsync(view);
+            _surface.ColorsRequested += (_, view) => _ = ApplyColorsToPaneAsync(view);
 
             _surface.WindowCommandRequested += OnSurfaceWindowCommand;
             _surface.NewSessionRequested += (_, _) => ShowNewSessionMenu(_surface.ActiveAddAnchor);
@@ -660,16 +661,41 @@ namespace Claret
             await ConnectProfileAsync(profile ?? entry.ToProfile());
         }
 
+        /// <summary>
+        /// Colours are per-pane, same as font, so this reaches only the active tab — every other
+        /// open one keeps its own.
+        /// </summary>
         private async void OnAppearanceClick(object sender, RoutedEventArgs e)
         {
-            var dialog = new AppearanceDialog(_appearanceStore.Current);
+            if (_surface.ActiveView is { } view)
+            {
+                await ApplyColorsToPaneAsync(view);
+            }
+        }
+
+        /// <summary>
+        /// Opens the colour picker seeded with this one pane's current colours, and — once
+        /// confirmed — applies them to that pane (and its frame) alone. Also becomes the starting
+        /// colours for tabs opened after this one, without reaching back to change any pane that is
+        /// already open.
+        /// </summary>
+        private async Task ApplyColorsToPaneAsync(TerminalView view)
+        {
+            var dialog = new AppearanceDialog(view.CurrentAppearance);
             if (await ShowDialogAsync(dialog) != ContentDialogResult.Primary)
             {
                 return;
             }
 
-            _appearanceStore.Save(dialog.Result);
-            _surface.ApplyAppearance(_appearanceStore.Current);
+            view.ApplyAppearance(dialog.Result);
+            _surface.RefreshPaneFrame(view);
+
+            TerminalAppearance next = _appearanceStore.Current.Clone();
+            next.Background = dialog.Result.Background;
+            next.Foreground = dialog.Result.Foreground;
+            next.SchemeName = dialog.Result.SchemeName;
+            next.Ansi = dialog.Result.Ansi;
+            _appearanceStore.Save(next);
         }
 
         private void DuplicateSession(TerminalView view)
@@ -1533,8 +1559,7 @@ namespace Claret
         /// </summary>
         private async Task ApplyFontToPaneAsync(TerminalView view)
         {
-            var current = new TerminalAppearance { FontFamily = view.TerminalFontFamily, FontSize = view.TerminalFontSize };
-            var dialog = new FontDialog(current);
+            var dialog = new FontDialog(view.CurrentAppearance);
             if (await ShowDialogAsync(dialog) != ContentDialogResult.Primary)
             {
                 return;

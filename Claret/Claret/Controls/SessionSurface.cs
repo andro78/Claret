@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Claret.Models;
 using Claret.Services;
@@ -111,10 +112,14 @@ namespace Claret.Controls
             ToolTipService.SetToolTip(tab, tooltip);
             tab.ContextFlyout = BuildTabMenu(view);
 
-            // TabViewItem's own close button hardcodes Ctrl+F4 as a second "close this tab" chord.
-            // That fights the app's real shortcut (Ctrl+Shift+W, shown on the tab's context menu)
-            // and — because a session is a live terminal — can eat a Ctrl+F4 the remote side was
-            // meant to see, silently closing the tab instead of forwarding the keystroke.
+            // TabViewItem's own close button hardcodes Ctrl+F4 as a second "close this tab" chord
+            // and auto-shows a "Close (Ctrl+F4)" tooltip for it — unprompted, and confusing since
+            // the app's real shortcut is Ctrl+Shift+W (shown on the tab's context menu instead).
+            // Hidden placement mode suppresses that auto-generated tooltip for the whole tab
+            // regardless of where in its template the accelerator lives; clearing the close
+            // button's own accelerator collection (best-effort — the part name can change between
+            // WinUI versions) also stops a remote-bound Ctrl+F4 from being eaten and closing the tab.
+            tab.KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
             tab.Loaded += (_, _) =>
             {
                 if (FindDescendant<Button>(tab, "CloseButton") is { } closeButton)

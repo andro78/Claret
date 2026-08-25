@@ -17,6 +17,20 @@
     <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>
 
+  <!--
+    Build stamp for the About dialog. Baked into the assembly rather than read from the file's
+    timestamp at run time: the attribute travels with the binary, so publishing, zipping or moving
+    the folder cannot change the answer.
+
+    Written as round-trip UTC and shown in local time, so a build passed to someone in another
+    zone still reads correctly. The cost is that the generated assembly info differs on every
+    evaluation, so each build recompiles even when no source changed — cheap here, and a stamp
+    that can be stale is not worth having.
+  -->
+  <ItemGroup>
+    <AssemblyMetadata Include="BuildTime" Value="$([System.DateTime]::UtcNow.ToString('O'))" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2526" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.3.1" />

@@ -1,4 +1,6 @@
 using System;
+using System.Globalization;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
@@ -20,6 +22,7 @@ namespace Claret.Dialogs
             InitializeComponent();
 
             VersionText.Text = $"Version {Version()}";
+            BuiltText.Text = $"Built {BuildTime()}";
             RuntimeText.Text = $"{RuntimeInformation.FrameworkDescription} · {RuntimeInformation.ProcessArchitecture}";
             WinUiText.Text = AssemblyVersion(typeof(Application).Assembly);
             WebViewText.Text = WebViewVersion();
@@ -52,6 +55,34 @@ namespace Claret.Dialogs
             }
 
             return assembly.GetName().Version?.ToString() ?? "unknown";
+        }
+
+        /// <summary>
+        /// When this binary was compiled, in the reader's own time zone. The build writes the
+        /// attribute as round-trip UTC (see the AssemblyMetadata item in Claret.csproj), so a build
+        /// handed to someone in another zone still names the right moment.
+        ///
+        /// Two people on the same version number can be running different binaries, which is the
+        /// whole reason this line exists — so an unstamped build says so rather than showing
+        /// nothing and letting the gap read as "same build".
+        /// </summary>
+        private static string BuildTime()
+        {
+            string? stamp = typeof(AboutDialog).Assembly
+                .GetCustomAttributes<AssemblyMetadataAttribute>()
+                .FirstOrDefault(attribute => attribute.Key == "BuildTime")?.Value;
+
+            if (stamp is { Length: > 0 }
+                && DateTimeOffset.TryParse(
+                    stamp,
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.RoundtripKind,
+                    out DateTimeOffset built))
+            {
+                return built.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+            }
+
+            return "unknown";
         }
 
         private static string AssemblyVersion(Assembly assembly)

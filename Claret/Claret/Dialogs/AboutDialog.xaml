@@ -20,6 +20,15 @@
                 <TextBlock TextWrapping="Wrap"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            Text="An SSH and serial console terminal for Windows." />
+                <!--
+                    Which build this is. Two people on the same version number can be running
+                    different binaries, and this is the line that tells them apart.
+                -->
+                <TextBlock x:Name="BuiltText"
+                           Margin="0,4,0,0"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           IsTextSelectionEnabled="True" />
             </StackPanel>
 
             <StackPanel Spacing="2">

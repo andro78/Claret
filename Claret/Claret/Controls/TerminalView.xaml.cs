@@ -387,17 +387,49 @@ namespace Claret.Controls
 
         /// <summary>
         /// Applies user colours to this terminal. Remembered so a page that has not finished
-        /// loading yet still gets them once it reports ready.
+        /// loading yet still gets them once it reports ready. Font is per-pane (see
+        /// <see cref="ApplyFont"/>) and edited separately, so whatever this pane is already using
+        /// carries through untouched — a colour change broadcast to every open pane must not reset
+        /// the font any one of them was individually given.
         /// </summary>
         public void ApplyAppearance(TerminalAppearance appearance)
         {
+            string family = _appearance?.FontFamily ?? appearance.FontFamily;
+            int size = _appearance?.FontSize ?? appearance.FontSize;
+
             _appearance = appearance.Clone();
+            _appearance.FontFamily = family;
+            _appearance.FontSize = size;
 
             Windows.UI.Color background = _appearance.BackgroundColor;
             Web.DefaultBackgroundColor = background;
             TerminalBackground.Color = background;
 
             PostAppearance();
+        }
+
+        // Named distinctly from Control.FontFamily/FontSize, which style this control's own XAML
+        // chrome (nothing here uses them) — these describe the terminal's rendered text instead.
+
+        /// <summary>This pane's own terminal font family, independent of every other open pane.</summary>
+        public string TerminalFontFamily => _appearance?.FontFamily ?? string.Empty;
+
+        /// <summary>This pane's own terminal font size, independent of every other open pane.</summary>
+        public int TerminalFontSize => _fontSize;
+
+        /// <summary>Changes only this pane's font — family and size — leaving its colours, and
+        /// every other pane's font, untouched.</summary>
+        public void ApplyFont(string family, int size)
+        {
+            if (_appearance is not null)
+            {
+                _appearance.FontFamily = family;
+                _appearance.FontSize = size;
+            }
+
+            Post("y" + family);
+            _fontSize = Math.Clamp(size, TerminalAppearance.MinFontSize, TerminalAppearance.MaxFontSize);
+            Post("s" + _fontSize.ToString());
         }
 
         /// <summary>
@@ -519,12 +551,22 @@ namespace Claret.Controls
             }
 
             _fontSize = next;
+            if (_appearance is not null)
+            {
+                _appearance.FontSize = _fontSize;
+            }
+
             Post("s" + _fontSize.ToString());
         }
 
         public void ResetFontSize()
         {
             _fontSize = 14;
+            if (_appearance is not null)
+            {
+                _appearance.FontSize = _fontSize;
+            }
+
             Post("s14");
         }
 

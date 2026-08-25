@@ -166,6 +166,7 @@ namespace Claret
             // Nothing to arm at startup: the AI auto-answer is per session and starts off.
             _surface.AutoApproved += OnSurfaceAutoApproved;
             _surface.LogRequested += (_, view) => _ = ToggleSessionLogAsync(view);
+            _surface.FontRequested += (_, view) => _ = ApplyFontToPaneAsync(view);
 
             _surface.WindowCommandRequested += OnSurfaceWindowCommand;
             _surface.NewSessionRequested += (_, _) => ShowNewSessionMenu(_surface.ActiveAddAnchor);
@@ -1196,14 +1197,15 @@ namespace Claret
         }
 
         /// <summary>
-        /// Names the font the terminal is drawing with. Automatic is resolved to the family it
-        /// actually landed on, because "Automatic" alone does not answer the question.
+        /// Names the font the active pane is drawing with — each pane can carry its own — falling
+        /// back to the saved default when nothing is open yet. Automatic is resolved to the family
+        /// it actually landed on, because "Automatic" alone does not answer the question.
         /// </summary>
         private void UpdateStatusFont()
         {
-            string chosen = _appearanceStore.Current.FontFamily;
-
-            int size = _appearanceStore.Current.SafeFontSize;
+            TerminalView? active = _surface.ActiveView;
+            string chosen = active is not null ? active.TerminalFontFamily : _appearanceStore.Current.FontFamily;
+            int size = active is not null ? active.TerminalFontSize : _appearanceStore.Current.SafeFontSize;
 
             string text = chosen.Length > 0
                 ? $"{chosen} · {size}"
@@ -1512,21 +1514,38 @@ namespace Claret
             _surface.ApplySerialTimestamps(_layoutStore.Current.SerialTimestamps);
         }
 
-        /// <summary>Font family and size in one dialog, with a preview that shows CJK alignment.</summary>
+        /// <summary>
+        /// Font family and size in one dialog, with a preview that shows CJK alignment. Font is
+        /// per-pane, so this reaches only the active tab — every other open one keeps its own.
+        /// </summary>
         private async void OnFontClick(object sender, RoutedEventArgs e)
         {
-            var dialog = new FontDialog(_appearanceStore.Current);
+            if (_surface.ActiveView is { } view)
+            {
+                await ApplyFontToPaneAsync(view);
+            }
+        }
+
+        /// <summary>
+        /// Opens the font picker seeded with this one pane's current font, and — once confirmed —
+        /// applies it to that pane alone. Also becomes the starting font for tabs opened after this
+        /// one, without reaching back to change any pane that is already open.
+        /// </summary>
+        private async Task ApplyFontToPaneAsync(TerminalView view)
+        {
+            var current = new TerminalAppearance { FontFamily = view.TerminalFontFamily, FontSize = view.TerminalFontSize };
+            var dialog = new FontDialog(current);
             if (await ShowDialogAsync(dialog) != ContentDialogResult.Primary)
             {
                 return;
             }
 
+            view.ApplyFont(dialog.Family, dialog.Size);
+
             TerminalAppearance next = _appearanceStore.Current.Clone();
             next.FontFamily = dialog.Family;
             next.FontSize = dialog.Size;
-
             _appearanceStore.Save(next);
-            _surface.ApplyAppearance(_appearanceStore.Current);
         }
 
         // ---------- sidebar tabs ----------

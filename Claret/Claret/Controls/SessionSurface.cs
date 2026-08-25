@@ -1174,6 +1174,10 @@ namespace Claret.Controls
             var log = new MenuFlyoutItem { Text = "Log to file…" };
             log.Click += (_, _) => LogRequested?.Invoke(this, view);
 
+            // Per-tab, not app-wide: this pane's font changes without touching any other open one.
+            var font = new MenuFlyoutItem { Text = "Font…" };
+            font.Click += (_, _) => FontRequested?.Invoke(this, view);
+
             var breakItem = new MenuFlyoutItem { Text = "Send break" };
             breakItem.Click += (_, _) => view.SendBreak();
 
@@ -1183,6 +1187,7 @@ namespace Claret.Controls
             menu.Items.Add(splitDown);
             menu.Items.Add(new MenuFlyoutSeparator());
             menu.Items.Add(log);
+            menu.Items.Add(font);
             menu.Items.Add(breakItem);
             menu.Items.Add(new MenuFlyoutSeparator());
             menu.Items.Add(close);
@@ -1219,6 +1224,9 @@ namespace Claret.Controls
 
         /// <summary>The user asked to start or stop recording this session; the shell picks the file.</summary>
         public event EventHandler<TerminalView>? LogRequested;
+
+        /// <summary>The user asked to change just this tab's font.</summary>
+        public event EventHandler<TerminalView>? FontRequested;
 
         private void SplitTab(TerminalView view, Orientation orientation)
         {

@@ -5,7 +5,6 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Windows.UI;
-using Claret.Controls;
 using Claret.Models;
 
 namespace Claret.Dialogs
@@ -22,10 +21,14 @@ namespace Claret.Dialogs
 
         private readonly List<Border> _swatches = new();
 
+        // Font is edited per-pane (see the tab's own "Font…" item), not here — carried through
+        // untouched so saving colours can never reset whichever font a pane is already using.
+        private readonly string _fontFamily;
+        private readonly int _fontSize;
+
         private Color _background;
         private Color _foreground;
         private List<string> _ansi;
-        private string _fontFamily;
         private bool _loading;
 
         public AppearanceDialog(TerminalAppearance current)
@@ -36,6 +39,7 @@ namespace Claret.Dialogs
             _foreground = current.ForegroundColor;
             _ansi = current.AnsiColors.ToList();
             _fontFamily = current.FontFamily;
+            _fontSize = current.SafeFontSize;
 
             _loading = true;
 
@@ -45,7 +49,6 @@ namespace Claret.Dialogs
             }
 
             SchemeBox.Items.Add(CustomLabel);
-            BuildFontList();
             TargetButtons.SelectedIndex = 0;
 
             BuildSwatches();
@@ -53,7 +56,7 @@ namespace Claret.Dialogs
 
             SyncSchemeSelection();
             LoadPicker();
-            UpdatePreviewFont();
+            SetPreviewFont();
             UpdatePreview();
 
             // Colours that match no preset were tuned by hand, so show where they came from.
@@ -74,6 +77,7 @@ namespace Claret.Dialogs
             Foreground = TerminalAppearance.ToHex(_foreground),
             SchemeName = SchemeBox.SelectedItem as string ?? CustomLabel,
             FontFamily = _fontFamily,
+            FontSize = _fontSize,
             Ansi = _ansi.ToArray(),
         };
 
@@ -100,62 +104,12 @@ namespace Claret.Dialogs
         }
 
         /// <summary>
-        /// Automatic first, then the candidates, each labelled with what it is and whether it is
-        /// actually installed — a missing family would otherwise just silently do nothing.
+        /// Colours are the only thing this dialog edits, so the preview just needs a readable
+        /// monospace face — not the pane's actual font, which lives (and is chosen) per tab.
         /// </summary>
-        private void BuildFontList()
+        private void SetPreviewFont()
         {
-            string? automatic = FontProbe.ResolveAutomatic(TerminalFont.AutomaticOrder);
-            FontBox.Items.Add(automatic is null
-                ? "Automatic (no Hangul-aligned font found)"
-                : $"Automatic — {automatic}");
-
-            foreach (TerminalFont.Candidate candidate in TerminalFont.Candidates)
-            {
-                FontProbe.Metrics metrics = FontProbe.Measure(candidate.Family);
-
-                string note = !metrics.Installed
-                    ? "not installed"
-                    : metrics.AlignsHangul
-                        ? $"{candidate.Note} · Hangul aligned"
-                        : $"{candidate.Note} · Hangul narrower than its cells";
-
-                FontBox.Items.Add($"{candidate.Family} — {note}");
-            }
-
-            int index = TerminalFont.Candidates
-                .ToList()
-                .FindIndex(c => string.Equals(c.Family, _fontFamily, StringComparison.OrdinalIgnoreCase));
-
-            FontBox.SelectedIndex = index < 0 ? 0 : index + 1;
-        }
-
-        private void OnFontChanged(object sender, SelectionChangedEventArgs e)
-        {
-            if (_loading)
-            {
-                return;
-            }
-
-            int index = FontBox.SelectedIndex - 1;
-            _fontFamily = index >= 0 && index < TerminalFont.Candidates.Count
-                ? TerminalFont.Candidates[index].Family
-                : TerminalFont.Automatic;
-
-            UpdatePreviewFont();
-        }
-
-        /// <summary>
-        /// Renders the sample in the font the terminal will use, so the Hangul-over-digits pair
-        /// shows the real alignment rather than a promise about it.
-        /// </summary>
-        private void UpdatePreviewFont()
-        {
-            string family = _fontFamily.Length > 0
-                ? _fontFamily
-                : FontProbe.ResolveAutomatic(TerminalFont.AutomaticOrder) ?? "Cascadia Mono";
-
-            var font = new FontFamily($"{family}, Cascadia Mono, Consolas, monospace");
+            var font = new FontFamily("Cascadia Mono, Consolas, monospace");
 
             PromptLine.FontFamily = font;
             LogLine.FontFamily = font;

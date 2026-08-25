@@ -21,16 +21,6 @@
                   HorizontalAlignment="Stretch"
                   SelectionChanged="OnSchemeChanged" />
 
-        <!--
-            Font matters for Hangul: only a face that advances one syllable across two Latin
-            cells keeps CJK columns aligned, so the list is ordered by that and the note says
-            what each one is.
-        -->
-        <ComboBox x:Name="FontBox"
-                  Header="Font"
-                  HorizontalAlignment="Stretch"
-                  SelectionChanged="OnFontChanged" />
-
         <!-- Preview sits above the picker: it is what you look at while trying schemes. -->
         <TextBlock Text="Preview" Style="{StaticResource CaptionTextBlockStyle}" />
         <Border x:Name="PreviewBorder"

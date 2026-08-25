@@ -24,6 +24,12 @@ namespace Claret.Services
         public bool CopyOnSelect { get; set; } = true;
 
         /// <summary>
+        /// Prefix each line of serial output with the time it arrived. Off by default: it changes
+        /// what the screen looks like, and only a console being read as a record wants it.
+        /// </summary>
+        public bool SerialTimestamps { get; set; }
+
+        /// <summary>
         /// Hosts where answering an AI prompt automatically is refused outright, whatever the
         /// session asks for. Kept rather than the opposite list on purpose: the dangerous setting
         /// is the one that should need repeating, and the safe one the one that should stick.

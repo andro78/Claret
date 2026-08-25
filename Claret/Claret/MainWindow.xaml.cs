@@ -149,6 +149,7 @@ namespace Claret
             };
             _surface.ApplyHighlights(_highlightStore.Rules);
             _surface.ApplyCopyOnSelect(_layoutStore.Current.CopyOnSelect);
+            _surface.ApplySerialTimestamps(_layoutStore.Current.SerialTimestamps);
 
             Serial.BindPinned(_serialProfileStore.Profiles);
             Serial.Initialize(_layoutStore.Current.Serial);
@@ -1477,6 +1478,17 @@ namespace Claret
             _surface.ApplyCopyOnSelect(_layoutStore.Current.CopyOnSelect);
         }
 
+        /// <summary>
+        /// Takes effect on the next line to arrive. What is already on screen is left as it is:
+        /// restamping it would put times on lines that arrived before anyone asked for times.
+        /// </summary>
+        private void OnSerialTimestampsClick(object sender, RoutedEventArgs e)
+        {
+            _layoutStore.Current.SerialTimestamps = SerialTimestampsItem.IsChecked;
+            _layoutStore.Save();
+            _surface.ApplySerialTimestamps(_layoutStore.Current.SerialTimestamps);
+        }
+
         /// <summary>Font family and size in one dialog, with a preview that shows CJK alignment.</summary>
         private async void OnFontClick(object sender, RoutedEventArgs e)
         {
@@ -1598,6 +1610,11 @@ namespace Claret
         private void OnOptionsOpening(object sender, object e)
         {
             CopyOnSelectItem.IsChecked = _layoutStore.Current.CopyOnSelect;
+
+            // The preference is remembered either way; it is only greyed out to say that nothing
+            // open right now would change if it were toggled.
+            SerialTimestampsItem.IsChecked = _layoutStore.Current.SerialTimestamps;
+            SerialTimestampsItem.IsEnabled = _surface.HasSerialSession;
 
             string folder = _layoutStore.Current.DownloadFolder;
             SftpDownloadFolderItem.Text = folder.Length > 0

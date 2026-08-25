@@ -67,6 +67,14 @@
                         <ToggleMenuFlyoutItem x:Name="CopyOnSelectItem"
                                               Text="Copy on selection"
                                               Click="OnCopyOnSelectClick" />
+                        <!--
+                            Serial only. A board console has no shell to pipe through `ts`, and a
+                            boot log is read for when things happened, so the terminal is the only
+                            thing in a position to say. Disabled when nothing on screen is serial.
+                        -->
+                        <ToggleMenuFlyoutItem x:Name="SerialTimestampsItem"
+                                              Text="Timestamp serial output"
+                                              Click="OnSerialTimestampsClick" />
                         <MenuFlyoutSeparator />
                         <MenuFlyoutSubItem x:Name="SftpMenu" Text="Downloads">
                             <MenuFlyoutSubItem.Icon>

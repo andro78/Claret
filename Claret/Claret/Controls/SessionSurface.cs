@@ -33,6 +33,7 @@ namespace Claret.Controls
         private TerminalAppearance? _appearance;
         private List<HighlightRule>? _highlights;
         private bool _copyOnSelect = true;
+        private bool _serialTimestamps;
         private bool _pruneQueued;
 
         public SessionSurface()
@@ -123,6 +124,7 @@ namespace Claret.Controls
             }
 
             view.ApplyCopyOnSelect(_copyOnSelect);
+            view.ApplySerialTimestamps(_serialTimestamps);
 
             SetActive(leaf, notify: false);
             RefreshChrome();
@@ -238,6 +240,25 @@ namespace Claret.Controls
                 foreach (TerminalView view in leaf.Group.Sessions)
                 {
                     view.ApplyAppearance(_appearance);
+                }
+            }
+        }
+
+        /// <summary>Whether any open session is a serial console, so the chrome can say if a
+        /// serial-only setting has anything to act on right now.</summary>
+        public bool HasSerialSession =>
+            Leaves().Any(leaf => leaf.Group.Sessions.Any(view => view.Serial is not null));
+
+        /// <summary>Pushes the serial timestamp preference to every terminal, and to any opened later.</summary>
+        public void ApplySerialTimestamps(bool enabled)
+        {
+            _serialTimestamps = enabled;
+
+            foreach (PaneLeafNode leaf in Leaves())
+            {
+                foreach (TerminalView view in leaf.Group.Sessions)
+                {
+                    view.ApplySerialTimestamps(enabled);
                 }
             }
         }

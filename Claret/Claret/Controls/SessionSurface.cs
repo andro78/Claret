@@ -111,6 +111,18 @@ namespace Claret.Controls
             ToolTipService.SetToolTip(tab, tooltip);
             tab.ContextFlyout = BuildTabMenu(view);
 
+            // TabViewItem's own close button hardcodes Ctrl+F4 as a second "close this tab" chord.
+            // That fights the app's real shortcut (Ctrl+Shift+W, shown on the tab's context menu)
+            // and — because a session is a live terminal — can eat a Ctrl+F4 the remote side was
+            // meant to see, silently closing the tab instead of forwarding the keystroke.
+            tab.Loaded += (_, _) =>
+            {
+                if (FindDescendant<Button>(tab, "CloseButton") is { } closeButton)
+                {
+                    closeButton.KeyboardAccelerators.Clear();
+                }
+            };
+
             leaf.Group.Add(tab);
 
             if (_appearance is not null)
@@ -1281,6 +1293,27 @@ namespace Claret.Controls
             {
                 ActiveSessionChanged?.Invoke(this, EventArgs.Empty);
             }
+        }
+
+        private static T? FindDescendant<T>(DependencyObject root, string name)
+            where T : FrameworkElement
+        {
+            int count = VisualTreeHelper.GetChildrenCount(root);
+            for (int i = 0; i < count; i++)
+            {
+                DependencyObject child = VisualTreeHelper.GetChild(root, i);
+                if (child is T typed && typed.Name == name)
+                {
+                    return typed;
+                }
+
+                if (FindDescendant<T>(child, name) is { } found)
+                {
+                    return found;
+                }
+            }
+
+            return null;
         }
     }
 }

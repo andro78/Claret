@@ -64,7 +64,7 @@ namespace Claret.Controls
     /// </summary>
     public sealed partial class TerminalView : UserControl
     {
-        private const string VirtualHost = "powerterm.invalid";
+        private const string VirtualHost = "claret.invalid";
         private const string PageUrl = "https://" + VirtualHost + "/terminal.html";
 
         /// <summary>Seconds between automatic reconnect attempts after the link drops.</summary>
@@ -79,6 +79,13 @@ namespace Claret.Controls
         private SessionLog? _log;
         private ConnectionProfile? _profile;
         private SerialConnection? _serial;
+
+        // Carries "the last byte was CR" across reads, for ExpandBareLineFeeds.
+        private bool _lastByteWasCr;
+
+        // Serial line timestamps: the preference, and whether the next byte begins a line.
+        private bool _serialTimestamps;
+        private bool _atLineStart = true;
         private string? _secret;
         private CancellationTokenSource? _connectCts;
 
@@ -260,6 +267,8 @@ namespace Claret.Controls
             }
 
             ITerminalLink session = open();
+            _lastByteWasCr = false;
+            _atLineStart = true;
             session.OutputReceived += OnSessionOutput;
             session.Closed += OnSessionClosed;
             session.Notice += OnSessionNotice;
@@ -454,6 +463,15 @@ namespace Claret.Controls
             // Ctrl+/- still adjusts this session afterwards; the stored size is the starting point.
             _fontSize = _appearance.SafeFontSize;
             Post("s" + _fontSize.ToString());
+        }
+
+        /// <summary>
+        /// Whether each line of serial output is prefixed with the time it arrived. Ignored by an
+        /// SSH pane, which has a shell on the far end that can date its own output.
+        /// </summary>
+        public void ApplySerialTimestamps(bool enabled)
+        {
+            _serialTimestamps = enabled;
         }
 
         /// <summary>Whether a mouse selection goes straight to the clipboard.</summary>
@@ -792,11 +810,142 @@ namespace Claret.Controls
             Post("p" + text.Replace("\r\n", "\r"));
         }
 
+        /// <summary>
+        /// Turns a lone LF into CRLF, for serial sessions only.
+        ///
+        /// SSH gets this for free: the remote PTY's onlcr does it before a byte ever reaches the
+        /// wire. A COM port has no line discipline behind it, so a board that writes "\n" moves the
+        /// cursor down one row and leaves it in the column it was already in. Every line then
+        /// starts further right than the one above and the output walks off the screen.
+        ///
+        /// Only an LF with no CR in front of it is touched, so a device that already sends CRLF
+        /// comes through untouched and nothing is ever doubled. That CR can be the last byte of the
+        /// previous read, which is why the flag outlives the chunk.
+        /// </summary>
+        private byte[] ExpandBareLineFeeds(byte[] chunk)
+        {
+            const byte Cr = 0x0D;
+            const byte Lf = 0x0A;
+
+            bool afterCr = _lastByteWasCr;
+            int bare = 0;
+            foreach (byte value in chunk)
+            {
+                if (value == Lf && !afterCr)
+                {
+                    bare++;
+                }
+
+                afterCr = value == Cr;
+            }
+
+            if (bare == 0)
+            {
+                _lastByteWasCr = afterCr;
+                return chunk;
+            }
+
+            byte[] expanded = new byte[chunk.Length + bare];
+            int at = 0;
+            afterCr = _lastByteWasCr;
+            foreach (byte value in chunk)
+            {
+                if (value == Lf && !afterCr)
+                {
+                    expanded[at++] = Cr;
+                }
+
+                expanded[at++] = value;
+                afterCr = value == Cr;
+            }
+
+            _lastByteWasCr = afterCr;
+            return expanded;
+        }
+
+        /// <summary>
+        /// Puts the arrival time in front of every line the port sends. A board console has no
+        /// shell to pipe through `ts`, and a boot log is usually read for when things happened —
+        /// which stage took the four seconds — so the terminal is the only place that can say.
+        ///
+        /// The time is when the bytes reached this machine, not when the device wrote them. Over a
+        /// slow line, or behind a device that buffers, those differ.
+        ///
+        /// A bare CR does not start a new line here. Progress bars return to column 0 and redraw
+        /// the same row over and over; stamping those would bury the output in timestamps. Nor is
+        /// an empty line stamped: the mark goes in front of the first byte that is really content.
+        ///
+        /// Cursor-addressing output — a TUI over the serial line — will be disturbed by this, since
+        /// text lands where the stamp has already pushed it. That is the cost of the setting, and
+        /// why it is off unless asked for.
+        /// </summary>
+        private byte[] StampLines(byte[] chunk)
+        {
+            const byte Cr = 0x0D;
+            const byte Lf = 0x0A;
+
+            byte[] stamp = Encoding.ASCII.GetBytes(DateTime.Now.ToString("[HH:mm:ss.fff] "));
+
+            bool lineStart = _atLineStart;
+            int stamps = 0;
+            foreach (byte value in chunk)
+            {
+                if (value == Lf)
+                {
+                    lineStart = true;
+                }
+                else if (value != Cr && lineStart)
+                {
+                    stamps++;
+                    lineStart = false;
+                }
+            }
+
+            if (stamps == 0)
+            {
+                _atLineStart = lineStart;
+                return chunk;
+            }
+
+            byte[] stamped = new byte[chunk.Length + (stamps * stamp.Length)];
+            int at = 0;
+            lineStart = _atLineStart;
+            foreach (byte value in chunk)
+            {
+                if (lineStart && value != Cr && value != Lf)
+                {
+                    Buffer.BlockCopy(stamp, 0, stamped, at, stamp.Length);
+                    at += stamp.Length;
+                    lineStart = false;
+                }
+
+                stamped[at++] = value;
+                if (value == Lf)
+                {
+                    lineStart = true;
+                }
+            }
+
+            _atLineStart = lineStart;
+            return stamped;
+        }
+
         private void OnSessionOutput(object? sender, byte[] chunk)
         {
             // Tee straight from the wire: what the log holds is what arrived, not what survived
             // the terminal's own redraws.
             _log?.Write(chunk);
+
+            // Display only, and after the log, so the file still holds the bytes as they came.
+            if (_serial is not null)
+            {
+                chunk = ExpandBareLineFeeds(chunk);
+
+                if (_serialTimestamps)
+                {
+                    chunk = StampLines(chunk);
+                }
+            }
 
             lock (_outputGate)
             {

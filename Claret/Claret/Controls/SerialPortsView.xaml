@@ -132,23 +132,49 @@
                    Text="No serial ports found. Plug in an adapter and rescan." />
 
         <!-- 115200 8N1 covers almost every board console; the rest is here for the ones it does not. -->
-        <StackPanel Grid.Row="4" Margin="4,6,2,0" Spacing="6">
+        <Grid Grid.Row="4" Margin="4,6,2,0" RowSpacing="6" ColumnSpacing="6">
+            <!--
+                Not an even split: the left column holds "8N1" and the right holds "XON/XOFF" and
+                the longer header. Equal halves would clip the right one first as the panel narrows.
+            -->
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*" />
+                <ColumnDefinition Width="3*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Baud gets the full width: it is the one that changes, and the longest value. -->
             <ComboBox x:Name="BaudBox"
+                      Grid.Row="0"
+                      Grid.ColumnSpan="2"
                       Header="Baud rate"
                       HorizontalAlignment="Stretch"
                       SelectionChanged="OnSettingChanged" />
 
-            <!-- Stacked, not side by side: the panel can be narrow enough to clip "None" to "Nc". -->
+            <!--
+                The other two share a row. Their headers are short so the pair still fits when the
+                panel is dragged narrow; the full phrase is on the tooltip, where a long label
+                belongs when the column is 90 pixels wide.
+            -->
             <ComboBox x:Name="FormatBox"
-                      Header="Data bits, parity, stop"
+                      Grid.Row="1"
+                      Grid.Column="0"
+                      Header="Data bits"
                       HorizontalAlignment="Stretch"
+                      ToolTipService.ToolTip="Data bits, parity, stop"
                       SelectionChanged="OnSettingChanged" />
 
             <ComboBox x:Name="FlowBox"
+                      Grid.Row="1"
+                      Grid.Column="1"
                       Header="Flow control"
                       HorizontalAlignment="Stretch"
+                      ToolTipService.ToolTip="Flow control"
                       SelectionChanged="OnSettingChanged" />
-        </StackPanel>
+        </Grid>
 
         <!--
             One button for the port, not two: while the selected port is open it closes it instead.

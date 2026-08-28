@@ -39,16 +39,21 @@
                   DoubleTapped="OnPinnedDoubleTapped">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="models:SerialProfile">
-                    <StackPanel Padding="4,6" Spacing="1">
-                        <TextBlock Text="{x:Bind DisplayName}"
-                                   TextWrapping="NoWrap"
-                                   TextTrimming="CharacterEllipsis" />
-                        <TextBlock Text="{x:Bind Detail}"
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   TextWrapping="NoWrap"
-                                   TextTrimming="CharacterEllipsis" />
-                    </StackPanel>
+                    <Border Padding="6,8"
+                            BorderThickness="0,0,0,1"
+                            BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="{x:Bind DisplayName}"
+                                       FontWeight="SemiBold"
+                                       TextWrapping="NoWrap"
+                                       TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{x:Bind Detail}"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="NoWrap"
+                                       TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </Border>
                 </DataTemplate>
             </ListView.ItemTemplate>
             <ListView.ContextFlyout>
@@ -107,16 +112,21 @@
                   DoubleTapped="OnListDoubleTapped">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="local:SerialPortItem">
-                    <StackPanel Padding="4,6" Spacing="1">
-                        <TextBlock Text="{x:Bind PortName}"
-                                   TextWrapping="NoWrap"
-                                   TextTrimming="CharacterEllipsis" />
-                        <TextBlock Text="{x:Bind Detail}"
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   TextWrapping="NoWrap"
-                                   TextTrimming="CharacterEllipsis" />
-                    </StackPanel>
+                    <Border Padding="6,8"
+                            BorderThickness="0,0,0,1"
+                            BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="{x:Bind PortName}"
+                                       FontWeight="SemiBold"
+                                       TextWrapping="NoWrap"
+                                       TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{x:Bind Detail}"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="NoWrap"
+                                       TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </Border>
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>

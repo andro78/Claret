@@ -352,16 +352,28 @@
                                   ItemsSource="{x:Bind Profiles}">
                             <ListView.ItemTemplate>
                                 <DataTemplate x:DataType="models:ConnectionProfile">
-                                    <StackPanel Padding="4,6" Spacing="1">
-                                        <TextBlock Text="{x:Bind DisplayName}"
-                                                   TextWrapping="NoWrap"
-                                                   TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Text="{x:Bind Endpoint}"
-                                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                   TextWrapping="NoWrap"
-                                                   TextTrimming="CharacterEllipsis" />
-                                    </StackPanel>
+                                    <!--
+                                        Two lines that have to read as one entry, in a list of a
+                                        dozen. The name carries the weight, the endpoint sits under
+                                        it, and the hairline is what separates one pair from the
+                                        next — without it the panel reads as a column of text with
+                                        no rows in it.
+                                    -->
+                                    <Border Padding="6,8"
+                                            BorderThickness="0,0,0,1"
+                                            BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}">
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="{x:Bind DisplayName}"
+                                                       FontWeight="SemiBold"
+                                                       TextWrapping="NoWrap"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{x:Bind Endpoint}"
+                                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                       TextWrapping="NoWrap"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                    </Border>
                                 </DataTemplate>
                             </ListView.ItemTemplate>
                             <ListView.ContextFlyout>

@@ -185,7 +185,18 @@ namespace Claret.Controls
         /// compile, because the generated lookup wants a FrameworkElement and a Window is not one.
         /// </summary>
         public static IconSource ListIcon(RemoteOs os) =>
-            For(os) ?? new SymbolIconSource { Symbol = Symbol.Globe };
+            For(os) ?? Globe();
+
+        /// <summary>
+        /// The stand-in for a host that has not said what it is yet. A SymbolIcon draws at its own
+        /// fixed size and comes out clipped in a 16-pixel box, so this asks for the same glyph at a
+        /// size that fits the row.
+        /// </summary>
+        private static IconSource Globe() => new FontIconSource
+        {
+            Glyph = "\uE774",
+            FontSize = 14,
+        };
 
         /// <summary>An icon for the platform, or null when there is nothing better than the globe.</summary>
         public static IconSource? For(RemoteOs os) => os switch

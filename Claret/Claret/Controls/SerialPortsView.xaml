@@ -150,6 +150,11 @@
                       SelectionChanged="OnSettingChanged" />
         </StackPanel>
 
+        <!--
+            One button for the port, not two: while the selected port is open it closes it instead.
+            Opening and closing the same line are one decision seen from either side, and a dead
+            "Open" sitting next to a live console is a state you have to read twice.
+        -->
         <Button x:Name="OpenButton"
                 Grid.Row="5"
                 Margin="4,8,2,2"
@@ -158,7 +163,7 @@
                 Style="{StaticResource AccentButtonStyle}"
                 Click="OnOpenClick">
             <StackPanel Orientation="Horizontal" Spacing="8">
-                <FontIcon Glyph="&#xE839;" FontSize="13" />
+                <FontIcon x:Name="OpenIcon" Glyph="&#xE839;" FontSize="13" />
                 <TextBlock x:Name="OpenLabel" Text="Open port" />
             </StackPanel>
         </Button>

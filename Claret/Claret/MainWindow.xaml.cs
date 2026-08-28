@@ -154,6 +154,7 @@ namespace Claret
             Serial.BindPinned(_serialProfileStore.Profiles);
             Serial.Initialize(_layoutStore.Current.Serial);
             Serial.OpenRequested += (_, settings) => _ = OpenSerialAsync(settings);
+            Serial.CloseRequested += (_, port) => CloseSerialPort(port);
             Serial.SettingsChanged += (_, settings) =>
             {
                 _layoutStore.Current.Serial = settings;
@@ -836,6 +837,28 @@ namespace Claret
         }
 
         /// <summary>
+        /// Closes the console holding a port, which is what the panel's button offers while that
+        /// port is open. Same thing the tab's ✕ does — closing the session is what releases the
+        /// line — so it asks no more than the ✕ does.
+        /// </summary>
+        private void CloseSerialPort(string portName)
+        {
+            if (_surface.FindSerialSession(portName) is { } view)
+            {
+                _surface.CloseSession(view);
+            }
+
+            UpdateSerialPorts();
+        }
+
+        /// <summary>
+        /// Tells the serial panel which ports are open. Driven from the status tick rather than
+        /// from events: a session can also end by itself — the cable is pulled, the far end goes —
+        /// and a button that still says "Close" after that is a lie about the port.
+        /// </summary>
+        private void UpdateSerialPorts() => Serial.ShowOpenPorts(_surface.OpenSerialPorts());
+
+        /// <summary>
         /// Pins the port and settings under a name. The port description is offered as the default,
         /// because "CP210x USB to UART" is a better first guess than "COM7" at what the board is.
         /// </summary>
@@ -1040,6 +1063,7 @@ namespace Claret
                 UpdateStatusNetwork();
                 UpdateStatusFont();
                 UpdateStatusLog();
+                UpdateSerialPorts();
             };
             _imeTimer.Start();
 

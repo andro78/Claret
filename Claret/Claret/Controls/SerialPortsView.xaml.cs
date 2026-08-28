@@ -49,7 +49,15 @@ namespace Claret.Controls
             ("XON/XOFF", Handshake.XOnXOff),
         };
 
+        // Segoe Fluent glyphs the one button switches between: a plug to open, a cross to close.
+        private const string PlugGlyph = "\uE839";
+
+        private const string CloseGlyph = "\uE8BB";
+
         private readonly ObservableCollection<SerialPortItem> _ports = new();
+
+        /// <summary>Ports with a console open right now, as last reported by the shell.</summary>
+        private readonly HashSet<string> _open = new(StringComparer.OrdinalIgnoreCase);
 
         private bool _loading;
 
@@ -80,6 +88,12 @@ namespace Claret.Controls
 
         /// <summary>Raised when the user asks to open a port with the settings shown.</summary>
         public event EventHandler<SerialConnection>? OpenRequested;
+
+        /// <summary>
+        /// Raised when the user asks to close the port that is already open. Carries the port name
+        /// rather than the settings: what is being closed is the line, whatever it was opened with.
+        /// </summary>
+        public event EventHandler<string>? CloseRequested;
 
         /// <summary>Raised when the settings change, so the shell can remember them.</summary>
         public event EventHandler<SerialConnection>? SettingsChanged;
@@ -175,15 +189,64 @@ namespace Claret.Controls
             PortList.SelectedItem = again ?? _ports.FirstOrDefault();
         }
 
-        private void OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+        /// <summary>
+        /// Tells the panel which ports have a console open, so the button can offer to close the
+        /// one selected. The shell owns the sessions, so it owns this answer; the panel only draws
+        /// it. Cheap enough to call from the status tick, and it returns early unless something
+        /// actually changed.
+        /// </summary>
+        public void ShowOpenPorts(IReadOnlyCollection<string> openPorts)
         {
-            bool selected = PortList.SelectedItem is SerialPortItem;
+            if (_open.Count == openPorts.Count && openPorts.All(_open.Contains))
+            {
+                return;
+            }
 
-            OpenButton.IsEnabled = selected;
-            PinButton.IsEnabled = selected;
-            OpenLabel.Text = PortList.SelectedItem is SerialPortItem item
-                ? $"Open {item.PortName}"
-                : "Open port";
+            _open.Clear();
+            foreach (string port in openPorts)
+            {
+                _open.Add(port);
+            }
+
+            UpdateOpenButton();
+        }
+
+        private void OnSelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateOpenButton();
+
+        /// <summary>Whether the selected port is one of the ports currently open.</summary>
+        private bool SelectionIsOpen =>
+            PortList.SelectedItem is SerialPortItem item && _open.Contains(item.PortName);
+
+        private void UpdateOpenButton()
+        {
+            var selected = PortList.SelectedItem as SerialPortItem;
+
+            OpenButton.IsEnabled = selected is not null;
+            PinButton.IsEnabled = selected is not null;
+
+            if (selected is null)
+            {
+                OpenLabel.Text = "Open port";
+                OpenIcon.Glyph = PlugGlyph;
+                OpenButton.Style = (Style)Application.Current.Resources["AccentButtonStyle"];
+                ToolTipService.SetToolTip(OpenButton, null);
+                return;
+            }
+
+            bool open = _open.Contains(selected.PortName);
+
+            OpenLabel.Text = open ? $"Close {selected.PortName}" : $"Open {selected.PortName}";
+            OpenIcon.Glyph = open ? CloseGlyph : PlugGlyph;
+
+            // Accent is for the thing you came here to do. Closing is the undo of that, and giving
+            // it the same weight makes an open console one stray click from gone.
+            OpenButton.Style = open
+                ? (Style)Application.Current.Resources["DefaultButtonStyle"]
+                : (Style)Application.Current.Resources["AccentButtonStyle"];
+
+            ToolTipService.SetToolTip(
+                OpenButton,
+                open ? $"Close the console on {selected.PortName}" : null);
         }
 
         private void OnPinClick(object sender, RoutedEventArgs e)
@@ -241,9 +304,24 @@ namespace Claret.Controls
 
         private async void OnRefreshClick(object sender, RoutedEventArgs e) => await RefreshAsync();
 
+        /// <summary>
+        /// Double-tapping a row always means open, never close. The button says which of the two it
+        /// would do; a double-tap says nothing, and closing a live console by accident is not a
+        /// mistake a gesture should be able to make. Opening one that is already open is answered
+        /// by the shell, which offers to go to it.
+        /// </summary>
         private void OnListDoubleTapped(object sender, DoubleTappedRoutedEventArgs e) => Open();
 
-        private void OnOpenClick(object sender, RoutedEventArgs e) => Open();
+        private void OnOpenClick(object sender, RoutedEventArgs e)
+        {
+            if (PortList.SelectedItem is SerialPortItem selected && SelectionIsOpen)
+            {
+                CloseRequested?.Invoke(this, selected.PortName);
+                return;
+            }
+
+            Open();
+        }
 
         private void Open()
         {

@@ -236,6 +236,20 @@ namespace Claret.Controls
                     && view.State is TerminalState.Connected or TerminalState.Connecting
                         or TerminalState.Reconnecting);
 
+        /// <summary>
+        /// The ports this window is holding open. The serial panel draws its button from this, so
+        /// it offers to close the port that is open rather than to open it a second time.
+        /// </summary>
+        public IReadOnlyCollection<string> OpenSerialPorts() =>
+            Leaves()
+                .SelectMany(leaf => leaf.Group.Sessions)
+                .Where(view => view.State is TerminalState.Connected or TerminalState.Connecting
+                    or TerminalState.Reconnecting)
+                .Select(view => view.Serial?.PortName)
+                .Where(port => !string.IsNullOrEmpty(port))
+                .Select(port => port!)
+                .ToList();
+
         /// <summary>Brings a session to the front: its pane active, its tab selected, focus in it.</summary>
         public void Activate(TerminalView view)
         {

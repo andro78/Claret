@@ -183,25 +183,34 @@ namespace Claret.Controls
         /// globe when it has never been connected to. Bound as a function rather than through a
         /// converter — an x:Bind converter inside a DataTemplate declared in a Window fails to
         /// compile, because the generated lookup wants a FrameworkElement and a Window is not one.
+        /// <para>
+        /// Drawn larger than a tab's: a row in the panel has the height for it, and at tab size the
+        /// mark was too small to tell a penguin from an apple at a glance.
+        /// </para>
         /// </summary>
         public static IconSource ListIcon(RemoteOs os) =>
-            For(os) ?? Globe();
+            For(os, ListIconSize) ?? Globe(ListIconSize);
+
+        /// <summary>Size the sidebar list draws its icons at, in pixels.</summary>
+        private const double ListIconSize = 18;
+
+        /// <summary>Size a session tab draws them at — the strip has less room.</summary>
+        private const double TabIconSize = 14;
 
         /// <summary>
         /// The stand-in for a host that has not said what it is yet. A SymbolIcon draws at its own
-        /// fixed size and comes out clipped in a 16-pixel box, so this asks for the same glyph at a
-        /// size that fits the row.
+        /// fixed size and comes out clipped, so this asks for the same glyph at the size wanted.
         /// </summary>
-        private static IconSource Globe() => new FontIconSource
+        private static IconSource Globe(double size) => new FontIconSource
         {
             Glyph = "\uE774",
-            FontSize = 14,
+            FontSize = size,
         };
 
         /// <summary>An icon for the platform, or null when there is nothing better than the globe.</summary>
-        public static IconSource? For(RemoteOs os) => os switch
+        public static IconSource? For(RemoteOs os, double size = TabIconSize) => os switch
         {
-            RemoteOs.Ubuntu => UbuntuMark(),
+            RemoteOs.Ubuntu => UbuntuMark(size),
             RemoteOs.Linux
                 or RemoteOs.Debian
                 or RemoteOs.Fedora
@@ -209,34 +218,37 @@ namespace Claret.Controls
                 or RemoteOs.Suse
                 or RemoteOs.Arch
                 or RemoteOs.Alpine
-                or RemoteOs.Raspbian => Emoji("\U0001F427"),   // penguin
-            RemoteOs.MacOs => Emoji("\U0001F34E"),             // red apple
-            RemoteOs.Windows => Emoji("\U0001FA9F"),           // window
-            RemoteOs.Bsd => Emoji("\U0001F608"),               // the daemon, near enough
+                or RemoteOs.Raspbian => Emoji("\U0001F427", size),   // penguin
+            RemoteOs.MacOs => Emoji("\U0001F34E", size),             // red apple
+            RemoteOs.Windows => Emoji("\U0001FA9F", size),           // window
+            RemoteOs.Bsd => Emoji("\U0001F608", size),               // the daemon, near enough
             _ => null,
         };
 
-        private static IconSource Emoji(string glyph) => new FontIconSource
+        private static IconSource Emoji(string glyph, double size) => new FontIconSource
         {
             Glyph = glyph,
             FontFamily = new FontFamily(EmojiFont),
-            FontSize = 14,
+            FontSize = size,
         };
 
         /// <summary>
         /// The Ubuntu ring of three: an annulus (two circles, even-odd, so the middle stays hollow)
-        /// with three dots set outside it, in Ubuntu orange.
+        /// with three dots set outside it, in Ubuntu orange. Laid out in a 16-unit box and scaled to
+        /// the size asked for, so it grows with the glyphs beside it instead of staying put.
         /// </summary>
-        private static IconSource UbuntuMark()
+        private static IconSource UbuntuMark(double size)
         {
+            double scale = size / 16;
+
             var geometry = new GeometryGroup { FillRule = FillRule.EvenOdd };
-            geometry.Children.Add(Circle(8, 8, 4.6));
-            geometry.Children.Add(Circle(8, 8, 3.1));
+            geometry.Children.Add(Circle(8, 8, 4.6, scale));
+            geometry.Children.Add(Circle(8, 8, 3.1, scale));
 
             // 90°, 210°, 330° — the same spacing as the logo, far enough out to stay separate.
-            geometry.Children.Add(Circle(8.0, 2.4, 1.9));
-            geometry.Children.Add(Circle(3.15, 10.8, 1.9));
-            geometry.Children.Add(Circle(12.85, 10.8, 1.9));
+            geometry.Children.Add(Circle(8.0, 2.4, 1.9, scale));
+            geometry.Children.Add(Circle(3.15, 10.8, 1.9, scale));
+            geometry.Children.Add(Circle(12.85, 10.8, 1.9, scale));
 
             return new PathIconSource
             {
@@ -245,11 +257,11 @@ namespace Claret.Controls
             };
         }
 
-        private static EllipseGeometry Circle(double x, double y, double radius) => new()
+        private static EllipseGeometry Circle(double x, double y, double radius, double scale) => new()
         {
-            Center = new Point(x, y),
-            RadiusX = radius,
-            RadiusY = radius,
+            Center = new Point(x * scale, y * scale),
+            RadiusX = radius * scale,
+            RadiusY = radius * scale,
         };
     }
 }

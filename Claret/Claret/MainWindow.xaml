@@ -377,8 +377,8 @@
                                                 says something true about the far end.
                                             -->
                                             <IconSourceElement Grid.Column="0"
-                                                               Width="18"
-                                                               Height="18"
+                                                               Width="22"
+                                                               Height="22"
                                                                VerticalAlignment="Center"
                                                                IconSource="{x:Bind local2:PlatformIcon.ListIcon(LastOs), Mode=OneWay}" />
 

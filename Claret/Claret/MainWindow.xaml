@@ -362,17 +362,38 @@
                                     <Border Padding="6,8"
                                             BorderThickness="0,0,0,1"
                                             BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}">
-                                        <StackPanel Spacing="2">
-                                            <TextBlock Text="{x:Bind DisplayName}"
-                                                       FontWeight="SemiBold"
-                                                       TextWrapping="NoWrap"
-                                                       TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Text="{x:Bind Endpoint}"
-                                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                       TextWrapping="NoWrap"
-                                                       TextTrimming="CharacterEllipsis" />
-                                        </StackPanel>
+                                        <Grid ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <!--
+                                                The icon a tab would draw for this host, from the
+                                                platform it reported last time — a penguin, the
+                                                Ubuntu ring, an apple. A host never connected to
+                                                gets the globe. It gives the eye a fixed column to
+                                                run down, and after the first connection it also
+                                                says something true about the far end.
+                                            -->
+                                            <IconSourceElement Grid.Column="0"
+                                                               Width="16"
+                                                               Height="16"
+                                                               VerticalAlignment="Center"
+                                                               IconSource="{x:Bind local2:PlatformIcon.ListIcon(LastOs), Mode=OneWay}" />
+
+                                            <StackPanel Grid.Column="1" Spacing="2">
+                                                <TextBlock Text="{x:Bind DisplayName}"
+                                                           FontWeight="SemiBold"
+                                                           TextWrapping="NoWrap"
+                                                           TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Text="{x:Bind Endpoint}"
+                                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                           TextWrapping="NoWrap"
+                                                           TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+                                        </Grid>
                                     </Border>
                                 </DataTemplate>
                             </ListView.ItemTemplate>

@@ -178,6 +178,15 @@ namespace Claret.Controls
                 : new Point(from.X + (dx / length * distance), from.Y + (dy / length * distance));
         }
 
+        /// <summary>
+        /// The icon for a saved connection row: the platform this host reported last time, or the
+        /// globe when it has never been connected to. Bound as a function rather than through a
+        /// converter — an x:Bind converter inside a DataTemplate declared in a Window fails to
+        /// compile, because the generated lookup wants a FrameworkElement and a Window is not one.
+        /// </summary>
+        public static IconSource ListIcon(RemoteOs os) =>
+            For(os) ?? new SymbolIconSource { Symbol = Symbol.Globe };
+
         /// <summary>An icon for the platform, or null when there is nothing better than the globe.</summary>
         public static IconSource? For(RemoteOs os) => os switch
         {

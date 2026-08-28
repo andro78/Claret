@@ -165,6 +165,7 @@ namespace Claret
             Serial.RenameRequested += (_, profile) => _ = RenameSerialAsync(profile);
             Serial.UnpinRequested += (_, profile) => _serialProfileStore.Remove(profile);
             // Nothing to arm at startup: the AI auto-answer is per session and starts off.
+            _surface.PlatformLearned += OnPlatformLearned;
             _surface.AutoApproved += OnSurfaceAutoApproved;
             _surface.LogRequested += (_, view) => _ = ToggleSessionLogAsync(view);
             _surface.FontRequested += (_, view) => _ = ApplyFontToPaneAsync(view);
@@ -1407,6 +1408,40 @@ namespace Claret
             view.ApplyAutoApprove(arm);
             _lastAutoApproved = string.Empty;
             UpdateStatusAutoApprove();
+        }
+
+        /// <summary>
+        /// Keeps the platform a host reported, so its row in the list carries the same icon its tab
+        /// does. Written only when it changed: this fires on every connect, and rewriting the file
+        /// each time would be a save per session for a value that almost never moves.
+        /// </summary>
+        private void OnPlatformLearned(object? sender, (TerminalView View, RemotePlatform Platform) found)
+        {
+            if (found.View.Profile is not { } connected || found.Platform.Os == RemoteOs.Unknown)
+            {
+                return;
+            }
+
+            // The pane holds a copy, so the stored profile is the one to update — and the list
+            // binds to that same instance.
+            ConnectionProfile? saved = _profileStore.Profiles
+                .FirstOrDefault(profile => profile.Id == connected.Id);
+
+            if (saved is null || saved.LastOs == found.Platform.Os)
+            {
+                return;
+            }
+
+            saved.LastOs = found.Platform.Os;
+            _profileStore.Save();
+
+            // The row is already built, and ConnectionProfile raises nothing when a property
+            // changes; replacing the item in place is what makes the list redraw with the icon.
+            int index = _profileStore.Profiles.IndexOf(saved);
+            if (index >= 0)
+            {
+                _profileStore.Profiles[index] = saved.Clone();
+            }
         }
 
         /// <summary>

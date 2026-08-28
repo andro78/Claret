@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Text.Json.Serialization;
 
 namespace Claret.Models
@@ -14,8 +15,10 @@ namespace Claret.Models
     /// A saved SSH endpoint. Secrets are never held here in plaintext: <see cref="ProtectedSecret"/>
     /// holds a DPAPI blob that only the current Windows user can unwrap.
     /// </summary>
-    public sealed class ConnectionProfile
+    public sealed class ConnectionProfile : INotifyPropertyChanged
     {
+        private RemoteOs _lastOs = RemoteOs.Unknown;
+
         public string Id { get; set; } = Guid.NewGuid().ToString("N");
 
         public string Name { get; set; } = string.Empty;
@@ -40,6 +43,34 @@ namespace Claret.Models
         /// <summary>Terminal type advertised to the server.</summary>
         public string TerminalType { get; set; } = "xterm-256color";
 
+        /// <summary>
+        /// What this host turned out to be running, last time it was connected to. Remembered so the
+        /// list can show it before connecting — the icon is only ever an answer the host gave, not
+        /// a guess from the name.
+        /// <para>
+        /// The one property here that changes while a row is on screen, so it is the one that has to
+        /// announce itself. Replacing the item in the list would redraw it too, but it would also
+        /// drop the selection — and this arrives a second after the double-click that made it.
+        /// </para>
+        /// </summary>
+        [JsonConverter(typeof(JsonStringEnumConverter))]
+        public RemoteOs LastOs
+        {
+            get => _lastOs;
+            set
+            {
+                if (_lastOs == value)
+                {
+                    return;
+                }
+
+                _lastOs = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LastOs)));
+            }
+        }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
         [JsonIgnore]
         public string DisplayName =>
             string.IsNullOrWhiteSpace(Name) ? Endpoint : Name;
@@ -60,6 +91,7 @@ namespace Claret.Models
             RememberSecret = RememberSecret,
             ProtectedSecret = ProtectedSecret,
             TerminalType = TerminalType,
+            LastOs = LastOs,
         };
     }
 }

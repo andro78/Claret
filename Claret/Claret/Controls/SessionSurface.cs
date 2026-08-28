@@ -877,8 +877,15 @@ namespace Claret.Controls
                 ToolTipService.SetToolTip(tab, $"{profile.Endpoint}\n{label}");
             }
 
+            PlatformLearned?.Invoke(this, (view, platform));
             RefreshChrome();
         }
+
+        /// <summary>
+        /// A session found out what the far end runs. The shell keeps it on the profile so the
+        /// saved-connection list can show the same icon before anything is connected.
+        /// </summary>
+        public event EventHandler<(TerminalView View, RemotePlatform Platform)>? PlatformLearned;
 
         // ---------- moving tabs between panes ----------
 

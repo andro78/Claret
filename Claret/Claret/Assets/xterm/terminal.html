@@ -359,15 +359,20 @@
             }
 
             // ---- answering an AI CLI approval prompt -----------------------------------------
-            // Codex, Claude Code and Gemini CLI all stop on a numbered list whose first entry is
-            // "Yes": option 1 runs the command, option 2 runs it and stops asking, and the last
-            // one refuses. With this on, option 1 is chosen automatically — using the shortcut the
-            // prompt itself advertises, e.g. "(y)", or the digit when it advertises none.
+            // Codex and Claude Code stop on a numbered list whose first entry is "Yes": option 1
+            // runs the command, option 2 runs it and stops asking, and the last one refuses. Gemini
+            // CLI never says "Yes" at all — its options read "Allow once" / "Allow for this
+            // session" / "No, suggest changes" — and picking "once" there would just mean answering
+            // the very same prompt again for the next command, so the session grant is the one
+            // worth automating instead. With this on, whichever of those is present is chosen
+            // automatically — using the shortcut the prompt itself advertises, e.g. "(y)", or the
+            // digit when it advertises none.
             var autoApprove = false;
             var lastApproved = '';
             var lastApprovedAt = 0;
 
             var YES_LINE = /^[\s•›>*\-]*([1-9])[.)]\s+(Yes\b.*)$/i;
+            var SESSION_LINE = /^[\s•›>*\-]*([1-9])[.)]\s+(Allow for this session\b.*)$/i;
             var OPTION_LINE = /^[\s•›>*\-]*[1-9][.)]\s+\S/;
             var SHORTCUT = /\(([A-Za-z])\)\s*$/;
 
@@ -378,6 +383,7 @@
                 }
 
                 var yes = null;
+                var sessionAllow = null;
                 var options = 0;
 
                 for (var i = 0; i < rows.length; i++) {
@@ -392,15 +398,22 @@
                     if (match && (yes === null || match[1] < yes.digit)) {
                         yes = { digit: match[1], text: match[2] };
                     }
+
+                    var sessionMatch = SESSION_LINE.exec(text);
+                    if (sessionMatch && sessionAllow === null) {
+                        sessionAllow = { digit: sessionMatch[1], text: sessionMatch[2] };
+                    }
                 }
 
-                // A lone "1. Yes" line is prose somewhere; a real prompt also offers a way out.
-                if (yes === null || options < 2) {
+                var choice = yes || sessionAllow;
+
+                // A lone matching line is prose somewhere; a real prompt also offers a way out.
+                if (choice === null || options < 2) {
                     lastApproved = '';
                     return;
                 }
 
-                var signature = yes.digit + ':' + yes.text;
+                var signature = choice.digit + ':' + choice.text;
                 var now = Date.now();
 
                 // The prompt stays on screen until the CLI redraws, so the same one must not be
@@ -412,8 +425,8 @@
                 lastApproved = signature;
                 lastApprovedAt = now;
 
-                var shortcut = SHORTCUT.exec(yes.text);
-                post('i' + base64FromString(shortcut ? shortcut[1] : yes.digit));
+                var shortcut = SHORTCUT.exec(choice.text);
+                post('i' + base64FromString(shortcut ? shortcut[1] : choice.digit));
                 post('n' + signature);
             }
 

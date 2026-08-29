@@ -49,6 +49,13 @@ namespace Claret
         private readonly SessionSurface _surface = new();
         private readonly IntPtr _windowHandle;
 
+        /// <summary>
+        /// Sessions closed this run, most recent on top, so "Reopen" can bring one straight back
+        /// with the same profile and secret it was already holding — never persisted, since a
+        /// secret that was only ever kept in memory should not start being written to disk now.
+        /// </summary>
+        private readonly Stack<ClosedSession> _closedSessions = new();
+
         /// <summary>Width of the icon rail, which is all that is left when the panel is collapsed.</summary>
         private const double RailWidth = 34;
 
@@ -134,7 +141,11 @@ namespace Claret
             Files.DownloadFolder = _layoutStore.Current.DownloadFolder;
             // Nothing is connected yet, so this only records the preference; the first listing reads it.
             _ = Files.SetShowFilesAsync(_layoutStore.Current.ShowRemoteFiles);
-            _surface.SessionClosing += (_, view) => Files.Forget(view);
+            _surface.SessionClosing += (_, view) =>
+            {
+                Files.Forget(view);
+                RememberClosedSession(view);
+            };
             Files.CommandRequested += (_, command) => _surface.ActiveView?.SendInput(command + "\n");
             Files.ShowFilesChanged += (_, showFiles) =>
             {
@@ -592,6 +603,16 @@ namespace Claret
 
             var menu = new MenuFlyout { XamlRoot = RootGrid.XamlRoot };
 
+            // Above even Recent: the tab you just closed, one accidental click ago, is a more
+            // urgent "get me back to where I was" than anything further back in history.
+            if (_closedSessions.Count > 0)
+            {
+                var reopen = new MenuFlyoutItem { Text = $"Reopen \"{_closedSessions.Peek().DisplayName}\"" };
+                reopen.Click += (_, _) => _ = ReopenLastClosedAsync();
+                menu.Items.Add(reopen);
+                menu.Items.Add(new MenuFlyoutSeparator());
+            }
+
             // Recent first: reconnecting to what you just used is the common case.
             IReadOnlyList<RecentConnection> recent = _recentStore.Items;
             if (recent.Count > 0)
@@ -777,6 +798,55 @@ namespace Claret
             finally
             {
                 _dialogOpen = false;
+            }
+        }
+
+        /// <summary>What it takes to reconnect a session that was just closed — either an SSH
+        /// profile with its in-memory secret, or a serial port's settings.</summary>
+        private readonly record struct ClosedSession(ConnectionProfile? Profile, string? Secret, SerialConnection? Serial)
+        {
+            public string DisplayName => Profile?.DisplayName ?? Serial?.DisplayName ?? "session";
+        }
+
+        /// <summary>
+        /// Captures what a session was connected to, while <see cref="SessionSurface.SessionClosing"/>
+        /// still guarantees the details are valid, so "Reopen" has something to reconnect with.
+        /// </summary>
+        private void RememberClosedSession(TerminalView view)
+        {
+            ClosedSession entry = view.Connection is { } connection
+                ? new ClosedSession(connection.Profile, connection.Secret, null)
+                : view.Serial is { } serial
+                    ? new ClosedSession(null, null, serial)
+                    : default;
+
+            if (entry.Profile is null && entry.Serial is null)
+            {
+                return;
+            }
+
+            _closedSessions.Push(entry);
+        }
+
+        /// <summary>Reopens whichever session was closed most recently, with the same profile (and
+        /// in-memory secret) or serial settings it already had — one pop per call, so reopening
+        /// again brings back the one before that.</summary>
+        private async Task ReopenLastClosedAsync()
+        {
+            if (_closedSessions.Count == 0)
+            {
+                return;
+            }
+
+            ClosedSession entry = _closedSessions.Pop();
+
+            if (entry.Profile is { } profile)
+            {
+                await OpenSessionAsync(profile, entry.Secret);
+            }
+            else if (entry.Serial is { } serial)
+            {
+                await OpenSerialAsync(serial);
             }
         }
 

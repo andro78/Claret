@@ -237,12 +237,7 @@ namespace Claret.Controls
 
             OpenLabel.Text = open ? $"Close {selected.PortName}" : $"Open {selected.PortName}";
             OpenIcon.Glyph = open ? CloseGlyph : PlugGlyph;
-
-            // Accent is for the thing you came here to do. Closing is the undo of that, and giving
-            // it the same weight makes an open console one stray click from gone.
-            OpenButton.Style = open
-                ? (Style)Application.Current.Resources["DefaultButtonStyle"]
-                : (Style)Application.Current.Resources["AccentButtonStyle"];
+            OpenButton.Style = (Style)Application.Current.Resources["AccentButtonStyle"];
 
             ToolTipService.SetToolTip(
                 OpenButton,

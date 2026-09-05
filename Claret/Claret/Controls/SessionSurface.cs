@@ -35,6 +35,7 @@ namespace Claret.Controls
         private List<HighlightRule>? _highlights;
         private bool _copyOnSelect = true;
         private bool _serialTimestamps;
+        private int _scrollbackLines = WorkspaceLayout.DefaultScrollbackLines;
         private bool _pruneQueued;
 
         public SessionSurface()
@@ -146,6 +147,7 @@ namespace Claret.Controls
 
             view.ApplyCopyOnSelect(_copyOnSelect);
             view.ApplySerialTimestamps(_serialTimestamps);
+            view.ApplyScrollback(_scrollbackLines);
 
             SetActive(leaf, notify: false);
             RefreshChrome();
@@ -308,6 +310,20 @@ namespace Claret.Controls
                 foreach (TerminalView view in leaf.Group.Sessions)
                 {
                     view.ApplyCopyOnSelect(enabled);
+                }
+            }
+        }
+
+        /// <summary>Pushes the scrollback line count to every terminal, and to any opened later.</summary>
+        public void ApplyScrollback(int lines)
+        {
+            _scrollbackLines = lines;
+
+            foreach (PaneLeafNode leaf in Leaves())
+            {
+                foreach (TerminalView view in leaf.Group.Sessions)
+                {
+                    view.ApplyScrollback(lines);
                 }
             }
         }

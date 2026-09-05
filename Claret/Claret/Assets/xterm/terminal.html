@@ -104,7 +104,9 @@
                 fontFamily: "'D2Coding', 'Cascadia Mono', 'Consolas', 'GulimChe', 'Malgun Gothic', monospace",
                 fontSize: 14,
                 lineHeight: 1.2,
-                scrollback: 10000,
+                // Overridden as soon as the host posts its own preference ('l'); matches that
+                // setting's shipped default so there is nothing to see change on a fresh session.
+                scrollback: 5000,
                 drawBoldTextInBrightColors: true,
                 rightClickSelectsWord: false,
                 theme: {
@@ -768,6 +770,12 @@
                             if (!isNaN(size) && size >= 6 && size <= 40) {
                                 term.options.fontSize = size;
                                 safeFit();
+                            }
+                            break;
+                        case 'l': // scrollback line count, e.g. "l5000"
+                            var lines = parseInt(body, 10);
+                            if (!isNaN(lines) && lines >= 100 && lines <= 9999) {
+                                term.options.scrollback = lines;
                             }
                             break;
                     }

@@ -75,6 +75,10 @@
                         <ToggleMenuFlyoutItem x:Name="SerialTimestampsItem"
                                               Text="Timestamp serial output"
                                               Click="OnSerialTimestampsClick" />
+                        <!-- Text is rewritten on Opening to show the line count currently in use. -->
+                        <MenuFlyoutItem x:Name="ScrollbackLinesItem"
+                                        Text="Scrollback lines…"
+                                        Click="OnScrollbackLinesClick" />
                         <MenuFlyoutSeparator />
                         <MenuFlyoutSubItem x:Name="SftpMenu" Text="Downloads">
                             <MenuFlyoutSubItem.Icon>

@@ -9,6 +9,10 @@ namespace Claret.Services
     /// <summary>Workspace preferences remembered between runs.</summary>
     public sealed class WorkspaceLayout
     {
+        public const int MinScrollbackLines = 100;
+        public const int MaxScrollbackLines = 9999;
+        public const int DefaultScrollbackLines = 5000;
+
         public double SidebarWidth { get; set; } = 256;
 
         public bool SidebarOnRight { get; set; }
@@ -48,6 +52,13 @@ namespace Claret.Services
         /// which is the default because writing to a remembered folder should be a deliberate choice.
         /// </summary>
         public string DownloadFolder { get; set; } = string.Empty;
+
+        /// <summary>
+        /// How many lines of scrollback each pane keeps. One setting for every terminal — unlike
+        /// font and colour, there is no per-pane case for wanting less history in one window than
+        /// another.
+        /// </summary>
+        public int ScrollbackLines { get; set; } = DefaultScrollbackLines;
     }
 
     internal sealed class LayoutStore
@@ -75,6 +86,10 @@ namespace Claret.Services
                 if (loaded is not null)
                 {
                     loaded.SidebarWidth = Math.Clamp(loaded.SidebarWidth, 160, 620);
+                    loaded.ScrollbackLines = Math.Clamp(
+                        loaded.ScrollbackLines,
+                        WorkspaceLayout.MinScrollbackLines,
+                        WorkspaceLayout.MaxScrollbackLines);
                     Current = loaded;
                 }
             }

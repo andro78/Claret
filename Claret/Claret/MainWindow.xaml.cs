@@ -1670,6 +1670,24 @@ namespace Claret
         }
 
         /// <summary>
+        /// How many lines of scrollback every pane keeps, current and future. One setting for the
+        /// whole window — unlike font and colour, there is no per-pane case for wanting less
+        /// history in one than another.
+        /// </summary>
+        private async void OnScrollbackLinesClick(object sender, RoutedEventArgs e)
+        {
+            var dialog = new ScrollbackDialog(_layoutStore.Current.ScrollbackLines);
+            if (await ShowDialogAsync(dialog) != ContentDialogResult.Primary)
+            {
+                return;
+            }
+
+            _layoutStore.Current.ScrollbackLines = dialog.Lines;
+            _layoutStore.Save();
+            _surface.ApplyScrollback(dialog.Lines);
+        }
+
+        /// <summary>
         /// Font family and size in one dialog, with a preview that shows CJK alignment. Font is
         /// per-pane, so this reaches only the active tab — every other open one keeps its own.
         /// </summary>
@@ -1811,6 +1829,8 @@ namespace Claret
             // open right now would change if it were toggled.
             SerialTimestampsItem.IsChecked = _layoutStore.Current.SerialTimestamps;
             SerialTimestampsItem.IsEnabled = _surface.HasSerialSession;
+
+            ScrollbackLinesItem.Text = $"Scrollback lines: {_layoutStore.Current.ScrollbackLines}";
 
             string folder = _layoutStore.Current.DownloadFolder;
             SftpDownloadFolderItem.Text = folder.Length > 0

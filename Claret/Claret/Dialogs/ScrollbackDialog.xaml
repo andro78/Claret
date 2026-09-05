@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="Claret.Dialogs.ScrollbackDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="Scrollback lines"
+    PrimaryButtonText="Apply"
+    SecondaryButtonText="Default"
+    CloseButtonText="Cancel"
+    DefaultButton="Primary">
+
+    <StackPanel Spacing="12" Width="320">
+        <TextBlock TextWrapping="Wrap"
+                   Style="{StaticResource CaptionTextBlockStyle}"
+                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                   Text="How many lines each terminal keeps above what's currently on screen. Applies to every open pane, and to any opened later." />
+
+        <NumberBox x:Name="LinesBox"
+                   Header="Lines"
+                   Minimum="100"
+                   Maximum="9999"
+                   SmallChange="100"
+                   LargeChange="1000"
+                   SpinButtonPlacementMode="Inline" />
+    </StackPanel>
+</ContentDialog>

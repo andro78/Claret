@@ -104,6 +104,7 @@ namespace Claret.Controls
         private uint _columns = 80;
         private uint _rows = 24;
         private int _fontSize = 14;
+        private int _scrollbackLines = WorkspaceLayout.DefaultScrollbackLines;
         private bool _copyOnSelect = true;
         private bool _autoApprove;
 
@@ -517,6 +518,25 @@ namespace Claret.Controls
             _serialTimestamps = enabled;
         }
 
+        /// <summary>How many lines of scrollback the page keeps. Applied live — xterm.js resizes its
+        /// buffer in place, dropping the oldest lines if it shrinks.</summary>
+        public void ApplyScrollback(int lines)
+        {
+            _scrollbackLines = Math.Clamp(
+                lines,
+                WorkspaceLayout.MinScrollbackLines,
+                WorkspaceLayout.MaxScrollbackLines);
+            PostScrollback();
+        }
+
+        private void PostScrollback()
+        {
+            if (_webViewReady)
+            {
+                Post("l" + _scrollbackLines.ToString());
+            }
+        }
+
         /// <summary>Whether a mouse selection goes straight to the clipboard.</summary>
         public void ApplyCopyOnSelect(bool enabled)
         {
@@ -641,6 +661,7 @@ namespace Claret.Controls
             PostHighlights();
             PostCopyOnSelect();
             PostAutoApprove();
+            PostScrollback();
         }
 
         private void OnWebMessageReceived(CoreWebView2 sender, CoreWebView2WebMessageReceivedEventArgs args)

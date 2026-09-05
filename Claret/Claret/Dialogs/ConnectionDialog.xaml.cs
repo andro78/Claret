@@ -94,6 +94,42 @@ namespace Claret.Dialogs
 
         private void OnAuthModeChanged(object sender, SelectionChangedEventArgs e) => UpdateAuthPanels();
 
+        /// <summary>
+        /// A password or passphrase is almost always plain ASCII, but an IME left in Hangul (or any
+        /// other script) mode still composes into a PasswordBox — Windows does not block it there the
+        /// way it blocks the on-screen candidate window elsewhere. Stripping anything outside ASCII as
+        /// it lands means the field types as English regardless of the system input language.
+        /// </summary>
+        private void OnPasswordChanging(PasswordBox sender, PasswordBoxPasswordChangingEventArgs args)
+        {
+            string current = sender.Password;
+            string ascii = ToAsciiOnly(current);
+            if (ascii != current)
+            {
+                sender.Password = ascii;
+            }
+        }
+
+        private static string ToAsciiOnly(string text)
+        {
+            if (text.Length == 0)
+            {
+                return text;
+            }
+
+            char[] filtered = new char[text.Length];
+            int count = 0;
+            foreach (char c in text)
+            {
+                if (c < 128)
+                {
+                    filtered[count++] = c;
+                }
+            }
+
+            return count == text.Length ? text : new string(filtered, 0, count);
+        }
+
         private void UpdateAuthPanels()
         {
             bool usesKey = AuthModeButtons.SelectedIndex == 1;

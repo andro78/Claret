@@ -52,7 +52,9 @@
             <StackPanel x:Name="PasswordPanel" Spacing="12">
                 <PasswordBox x:Name="PasswordBoxInput"
                              Header="Password"
-                             PlaceholderText="Leave blank and the server will ask" />
+                             PlaceholderText="Leave blank and the server will ask"
+                             PasswordRevealMode="Peek"
+                             PasswordChanging="OnPasswordChanging" />
             </StackPanel>
 
             <StackPanel x:Name="KeyPanel" Spacing="12" Visibility="Collapsed">
@@ -65,7 +67,9 @@
                         Click="OnBrowseKeyClick" />
                 <PasswordBox x:Name="PassphraseBoxInput"
                              Header="Key passphrase"
-                             PlaceholderText="Leave blank if the key has none" />
+                             PlaceholderText="Leave blank if the key has none"
+                             PasswordRevealMode="Peek"
+                             PasswordChanging="OnPasswordChanging" />
             </StackPanel>
 
             <StackPanel Spacing="6" Margin="0,4,0,0">

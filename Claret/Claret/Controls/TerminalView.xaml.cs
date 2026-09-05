@@ -1165,7 +1165,11 @@ namespace Claret.Controls
                 }
 
                 SetState(TerminalState.Disconnected);
-                ShowError("Session ended", reason ?? "The session has ended.", canRetry: true);
+                ShowError(
+                    "Session ended",
+                    reason ?? "The session has ended.",
+                    canRetry: true,
+                    coverTerminal: false);
             });
         }
 
@@ -1253,11 +1257,16 @@ namespace Claret.Controls
             _autoReconnect = false;
             StopRetryCountdown();
             SetState(TerminalState.Disconnected);
-            ShowError("Session ended", _retryReason.Length == 0 ? "The session has ended." : _retryReason, canRetry: true);
+            ShowError(
+                "Session ended",
+                _retryReason.Length == 0 ? "The session has ended." : _retryReason,
+                canRetry: true,
+                coverTerminal: false);
         }
 
         private void ShowCountdown(string title)
         {
+            EndedBanner.Visibility = Visibility.Collapsed;
             Overlay.Visibility = Visibility.Visible;
             BusyRing.IsActive = true;
             OverlayIcon.Visibility = Visibility.Collapsed;
@@ -1356,6 +1365,7 @@ namespace Claret.Controls
 
         private void ShowBusy(string title, string detail)
         {
+            EndedBanner.Visibility = Visibility.Collapsed;
             Overlay.Visibility = Visibility.Visible;
             BusyRing.IsActive = true;
             OverlayIcon.Visibility = Visibility.Collapsed;
@@ -1365,8 +1375,26 @@ namespace Claret.Controls
             OverlayDetail.Text = detail;
         }
 
-        private void ShowError(string title, string detail, bool canRetry)
+        /// <summary>
+        /// Reports a failure. <paramref name="coverTerminal"/> is false only for a session that was
+        /// live and then ended: the buffer it left behind is worth reading and selecting, so that
+        /// case uses <see cref="EndedBanner"/> — a strip at the bottom — instead of blacking out the
+        /// whole pane the way a failure with nothing behind it yet (the WebView never started, or
+        /// the very first connect attempt failed) still should.
+        /// </summary>
+        private void ShowError(string title, string detail, bool canRetry, bool coverTerminal = true)
         {
+            if (!coverTerminal)
+            {
+                Overlay.Visibility = Visibility.Collapsed;
+                EndedBanner.Visibility = Visibility.Visible;
+                EndedTitle.Text = title;
+                EndedDetail.Text = detail;
+                EndedRetryButton.Visibility = canRetry ? Visibility.Visible : Visibility.Collapsed;
+                return;
+            }
+
+            EndedBanner.Visibility = Visibility.Collapsed;
             Overlay.Visibility = Visibility.Visible;
             BusyRing.IsActive = false;
             OverlayIcon.Visibility = Visibility.Visible;
@@ -1379,6 +1407,7 @@ namespace Claret.Controls
         private void HideOverlay()
         {
             Overlay.Visibility = Visibility.Collapsed;
+            EndedBanner.Visibility = Visibility.Collapsed;
             BusyRing.IsActive = false;
         }
 

@@ -61,5 +61,46 @@
                 </StackPanel>
             </StackPanel>
         </Grid>
+
+        <!--
+            A session that was live and then ended: the buffer it left behind is worth reading and
+            selecting, so this claims only the strip it occupies instead of the whole pane. No
+            Background on anything outside this Border, so clicks and drags everywhere else still
+            reach the WebView underneath.
+        -->
+        <Border x:Name="EndedBanner"
+                VerticalAlignment="Bottom"
+                Background="#E0101010"
+                BorderThickness="0,1,0,0"
+                BorderBrush="#26FFFFFF"
+                Padding="16,10"
+                Visibility="Collapsed">
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                    <TextBlock x:Name="EndedTitle"
+                               Text=""
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               Foreground="#F0F0F0"
+                               TextWrapping="Wrap" />
+                    <TextBlock x:Name="EndedDetail"
+                               Text=""
+                               FontSize="12"
+                               Foreground="#B0B0B0"
+                               TextWrapping="Wrap"
+                               IsTextSelectionEnabled="True" />
+                </StackPanel>
+                <Button x:Name="EndedRetryButton"
+                        Grid.Column="1"
+                        Content="Reconnect now"
+                        VerticalAlignment="Center"
+                        Visibility="Collapsed"
+                        Click="OnRetryClick" />
+            </Grid>
+        </Border>
     </Grid>
 </UserControl>

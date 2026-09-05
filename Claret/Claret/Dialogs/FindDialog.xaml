@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="Claret.Dialogs.FindDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="Find"
+    PrimaryButtonText="Find"
+    CloseButtonText="Close"
+    DefaultButton="Primary">
+
+    <StackPanel Spacing="8" Width="300">
+        <TextBox x:Name="QueryBox" PlaceholderText="Text to find" />
+        <TextBlock TextWrapping="Wrap"
+                   Style="{StaticResource CaptionTextBlockStyle}"
+                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                   Text="Jumps to the first match, searching the whole buffer from the top." />
+    </StackPanel>
+</ContentDialog>

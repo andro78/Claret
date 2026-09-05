@@ -714,15 +714,12 @@
             // Double-click (word) and triple-click (line) land as one mouseup each, so they are
             // already covered by the handler above.
 
-            // Right-click: copy when there is a selection, paste otherwise (PuTTY-style).
+            // Right-click: hand off to the host's own menu (Copy/Paste/Find/Clear) rather than
+            // guessing which one action the click meant. Native WinUI, not an HTML menu, so it
+            // matches every other menu in the app and needs no styling of its own here.
             term.element.addEventListener('contextmenu', function (ev) {
                 ev.preventDefault();
-                if (term.hasSelection()) {
-                    copySelection();
-                    term.clearSelection();
-                } else {
-                    post('v');
-                }
+                post('u' + (term.hasSelection() ? '1' : '0') + ',' + ev.clientX + ',' + ev.clientY);
             });
 
             // Host -> terminal
@@ -799,6 +796,18 @@
                             var lines = parseInt(body, 10);
                             if (!isNaN(lines) && lines >= 100 && lines <= 9999) {
                                 term.options.scrollback = lines;
+                            }
+                            break;
+                        case 'q': // context menu's Copy — the selection made before it was opened
+                            copySelection();
+                            break;
+                        case 'd': // context menu's Select All
+                            term.selectAll();
+                            break;
+                        case 'j': // Find: scroll so buffer line N sits mid-screen
+                            var target = parseInt(body, 10);
+                            if (!isNaN(target)) {
+                                term.scrollToLine(Math.max(0, target - Math.floor(term.rows / 2)));
                             }
                             break;
                     }

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -9,9 +10,11 @@ using System.Threading.Tasks;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.Web.WebView2.Core;
 using Renci.SshNet.Common;
-using Windows.ApplicationModel.DataTransfer;
+using Windows.Foundation;
+using Claret.Dialogs;
 using Claret.Models;
 using Claret.Services;
 
@@ -775,7 +778,7 @@ namespace Claret.Controls
                     break;
 
                 case 'v': // paste request
-                    _ = PasteFromClipboardAsync();
+                    PasteFromClipboard();
                     break;
 
                 case 'n': // an AI prompt was answered on our behalf; the shell shows the rest
@@ -804,6 +807,10 @@ namespace Claret.Controls
                         _bufferCapture?.TrySetResult(Encoding.UTF8.GetString(bufferBytes));
                     }
 
+                    break;
+
+                case 'u': // right-click at "hasSelection,x,y" (WebView-local coordinates)
+                    ShowTerminalContextMenu(body);
                     break;
             }
         }
@@ -867,10 +874,12 @@ namespace Claret.Controls
         }
 
         /// <summary>
-        /// Puts the selection on the Windows clipboard. Windows allows one clipboard owner at a
-        /// time, so another process holding it open makes a single attempt fail for no lasting
-        /// reason — that one is retried. A failure that survives the retry is said out loud: a
-        /// copy that quietly does not happen reads as a broken terminal.
+        /// Puts the selection on the Windows clipboard, via the plain Win32 API rather than
+        /// <see cref="Windows.ApplicationModel.DataTransfer.Clipboard"/> — see
+        /// <see cref="Win32Clipboard"/> for why. Windows allows one clipboard owner at a time, so
+        /// another process holding it open makes a single attempt fail for no lasting reason —
+        /// that one is retried. A failure that survives the retry is said out loud: a copy that
+        /// quietly does not happen reads as a broken terminal.
         /// </summary>
         private async Task CopyToClipboardAsync(string text)
         {
@@ -881,57 +890,24 @@ namespace Claret.Controls
 
             for (int attempt = 0; attempt < 2; attempt++)
             {
-                try
+                if (Win32Clipboard.TrySetText(text))
                 {
-                    var package = new DataPackage { RequestedOperation = DataPackageOperation.Copy };
-                    package.SetText(text);
-                    Clipboard.SetContent(package);
-                }
-                catch (Exception ex)
-                {
-                    if (attempt == 0)
-                    {
-                        await Task.Delay(80).ConfigureAwait(true);
-                        continue;
-                    }
-
-                    PostNotice($"Copy failed: {ex.GetType().Name}: {ex.Message}");
                     return;
                 }
 
-                // Hands the data to the clipboard itself so it outlives this process. Worth
-                // asking for, not worth failing over: the copy has already happened.
-                try
+                if (attempt == 0)
                 {
-                    Clipboard.Flush();
-                }
-                catch (Exception)
-                {
+                    await Task.Delay(80).ConfigureAwait(true);
+                    continue;
                 }
 
-                return;
+                PostNotice("Copy failed: could not open the clipboard.");
             }
         }
 
-        private async Task PasteFromClipboardAsync()
+        private void PasteFromClipboard()
         {
-            string? text = null;
-            try
-            {
-                DataPackageView view = Clipboard.GetContent();
-                if (view.Contains(StandardDataFormats.Text))
-                {
-                    text = await view.GetTextAsync();
-                }
-            }
-            catch (Exception ex)
-            {
-                // Another process may hold the clipboard open. Say which failure it was rather
-                // than skipping in silence, which looks the same as the paste key doing nothing.
-                PostNotice($"Paste failed: {ex.GetType().Name}: {ex.Message}");
-                return;
-            }
-
+            string? text = Win32Clipboard.TryGetText();
             if (string.IsNullOrEmpty(text) || !_webViewReady)
             {
                 return;
@@ -939,6 +915,106 @@ namespace Claret.Controls
 
             // Hand it to xterm so bracketed-paste mode is honoured.
             Post("p" + text.Replace("\r\n", "\r"));
+        }
+
+        /// <summary>
+        /// Right-click's own menu — native WinUI rather than an HTML one, so it looks like every
+        /// other menu in the app. <paramref name="body"/> is "hasSelection,x,y" in WebView-local
+        /// coordinates, which the page sends because the host cannot see clicks landing inside it.
+        /// </summary>
+        private void ShowTerminalContextMenu(string body)
+        {
+            string[] parts = body.Split(',');
+            if (parts.Length != 3
+                || !double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double x)
+                || !double.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out double y))
+            {
+                return;
+            }
+
+            bool hasSelection = parts[0] == "1";
+
+            var menu = new MenuFlyout();
+
+            var copy = new MenuFlyoutItem
+            {
+                Text = "Copy",
+                IsEnabled = hasSelection,
+                KeyboardAcceleratorTextOverride = "Ctrl+Shift+C",
+            };
+            copy.Click += (_, _) => Post("q");
+
+            var paste = new MenuFlyoutItem
+            {
+                Text = "Paste",
+                KeyboardAcceleratorTextOverride = "Ctrl+Shift+V",
+            };
+            paste.Click += (_, _) => PasteFromClipboard();
+
+            var selectAll = new MenuFlyoutItem { Text = "Select All" };
+            selectAll.Click += (_, _) => Post("d");
+
+            var find = new MenuFlyoutItem { Text = "Find…" };
+            find.Click += (_, _) => _ = ShowFindDialogAsync();
+
+            var clear = new MenuFlyoutItem { Text = "Clear" };
+            clear.Click += (_, _) => ClearScreen();
+
+            menu.Items.Add(copy);
+            menu.Items.Add(paste);
+            menu.Items.Add(new MenuFlyoutSeparator());
+            menu.Items.Add(selectAll);
+            menu.Items.Add(find);
+            menu.Items.Add(new MenuFlyoutSeparator());
+            menu.Items.Add(clear);
+
+            menu.ShowAt(Web, new FlyoutShowOptions { Position = new Point(x, y) });
+        }
+
+        /// <summary>
+        /// Jumps to the first line containing <paramref name="query"/>, searching the same buffer
+        /// <see cref="CaptureBufferAsync"/> saves — scrollback included, top down. A plain substring
+        /// search: Find is for jumping to something you remember seeing, not a regex tool, which the
+        /// highlight rules already cover for anyone colouring a pattern permanently.
+        /// </summary>
+        private async Task ShowFindDialogAsync()
+        {
+            var dialog = new FindDialog();
+
+            try
+            {
+                dialog.XamlRoot = XamlRoot;
+                if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+                {
+                    return;
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // Another dialog already owns the XamlRoot; asking again once it closes is on the
+                // user, not something worth queuing behind.
+                PostNotice("[Find: another dialog is already open]\n");
+                return;
+            }
+
+            string query = dialog.Query;
+            if (string.IsNullOrWhiteSpace(query))
+            {
+                return;
+            }
+
+            string text = await CaptureBufferAsync();
+            string[] lines = text.Length == 0 ? Array.Empty<string>() : text.Split('\n');
+
+            int match = Array.FindIndex(lines, line => line.Contains(query, StringComparison.OrdinalIgnoreCase));
+            if (match < 0)
+            {
+                PostNotice($"[Find: no match for \"{query}\"]\n");
+                return;
+            }
+
+            Post("j" + match.ToString(CultureInfo.InvariantCulture));
+            PostNotice($"[Find: \"{query}\" — line {match + 1}]\n");
         }
 
         /// <summary>

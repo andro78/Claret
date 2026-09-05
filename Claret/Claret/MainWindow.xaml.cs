@@ -179,6 +179,7 @@ namespace Claret
             _surface.PlatformLearned += OnPlatformLearned;
             _surface.AutoApproved += OnSurfaceAutoApproved;
             _surface.LogRequested += (_, view) => _ = ToggleSessionLogAsync(view);
+            _surface.SaveOutputRequested += (_, view) => _ = SaveOutputAsync(view);
             _surface.FontRequested += (_, view) => _ = ApplyFontToPaneAsync(view);
             _surface.ColorsRequested += (_, view) => _ = ApplyColorsToPaneAsync(view);
 
@@ -908,15 +909,15 @@ namespace Claret
         }
 
         /// <summary>
-        /// Closes the console holding a port, which is what the panel's button offers while that
-        /// port is open. Same thing the tab's ✕ does — closing the session is what releases the
-        /// line — so it asks no more than the ✕ does.
+        /// Releases a port, which is what the panel's button offers while that port is open. Only
+        /// disconnects — the tab's own ✕ is still what removes it — so the scrollback stays on
+        /// screen and Reconnect can open the same port again without losing it.
         /// </summary>
         private void CloseSerialPort(string portName)
         {
             if (_surface.FindSerialSession(portName) is { } view)
             {
-                _surface.CloseSession(view);
+                view.Disconnect();
             }
 
             UpdateSerialPorts();
@@ -1056,6 +1057,69 @@ namespace Claret
             }
 
             UpdateStatusLog();
+        }
+
+        /// <summary>
+        /// Saves a pane's current buffer — on-screen text plus scrollback — to a file in one shot.
+        /// Independent of Log to file: a pane can have neither, either, or both going, and this
+        /// works even on one that has already disconnected, since the buffer is just what the page
+        /// is still showing.
+        /// </summary>
+        private async Task SaveOutputAsync(TerminalView view)
+        {
+            string text = await view.CaptureBufferAsync();
+            if (text.Length == 0)
+            {
+                return;
+            }
+
+            string suggested = $"{Sanitise(view.SessionLabel)}-{DateTime.Now:yyyyMMdd-HHmm}";
+
+            StorageFile? file;
+            try
+            {
+                var picker = new FileSavePicker
+                {
+                    SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+                    SuggestedFileName = suggested,
+                };
+
+                picker.FileTypeChoices.Add("Text file", new List<string> { ".txt" });
+                picker.FileTypeChoices.Add("Log file", new List<string> { ".log" });
+                WinRT.Interop.InitializeWithWindow.Initialize(picker, _windowHandle);
+
+                file = await picker.PickSaveFileAsync();
+            }
+            catch (Exception ex)
+            {
+                await ShowDialogAsync(new ContentDialog
+                {
+                    Title = "Save output",
+                    Content = $"Cannot open the save dialog: {ex.Message}",
+                    CloseButtonText = "Close",
+                });
+
+                return;
+            }
+
+            if (file is null)
+            {
+                return;
+            }
+
+            try
+            {
+                await File.WriteAllTextAsync(file.Path, text);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                await ShowDialogAsync(new ContentDialog
+                {
+                    Title = "Save output",
+                    Content = $"Cannot save {file.Path}: {ex.Message}",
+                    CloseButtonText = "Close",
+                });
+            }
         }
 
         /// <summary>Keeps a session label usable as a file name.</summary>

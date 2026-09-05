@@ -75,6 +75,7 @@ namespace Claret.Controls
         private readonly List<byte[]> _pendingOutput = new();
 
         private TaskCompletionSource<bool>? _readySource;
+        private TaskCompletionSource<string>? _bufferCapture;
         private ITerminalLink? _session;
         private SessionLog? _log;
         private ConnectionProfile? _profile;
@@ -209,6 +210,42 @@ namespace Claret.Controls
             _log = null;
 
             PostNotice($"[logging stopped: {path}]\n");
+        }
+
+        /// <summary>
+        /// Everything currently in the pane's buffer — on-screen text plus scrollback — as one
+        /// plain-text snapshot, for a one-shot "save what's here" rather than <see cref="StartLogging"/>'s
+        /// continuous recording, which (as its own doc says) never has what arrived before it was
+        /// turned on. Answered by the page itself, since only it still holds the buffer once a
+        /// session has ended. Empty if the page never answers within a few seconds.
+        /// </summary>
+        public async Task<string> CaptureBufferAsync()
+        {
+            if (!_webViewReady)
+            {
+                return string.Empty;
+            }
+
+            var capture = new TaskCompletionSource<string>();
+            _bufferCapture = capture;
+            Post("b");
+
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using CancellationTokenRegistration registration =
+                timeout.Token.Register(() => capture.TrySetCanceled());
+
+            try
+            {
+                return await capture.Task.ConfigureAwait(true);
+            }
+            catch (OperationCanceledException)
+            {
+                return string.Empty;
+            }
+            finally
+            {
+                _bufferCapture = null;
+            }
         }
 
         /// <summary>Last title reported by the remote shell via OSC 0/2, if any.</summary>
@@ -354,12 +391,24 @@ namespace Claret.Controls
             PlatformDetected?.Invoke(this, platform);
         }
 
+        /// <summary>
+        /// Ends the link without closing the tab or touching the scrollback. Deliberately does not
+        /// call <see cref="DetachSession"/> — that unsubscribes <c>Closed</c> before disposing, which
+        /// is right for a tab that is going away (<see cref="Shutdown"/>) but would leave this pane
+        /// with no state change and no way back. Left subscribed, disposing raises <c>Closed</c>
+        /// with a null reason exactly as a clean remote exit would, which lands on the same "Session
+        /// ended" overlay with Reconnect — nothing here has to duplicate that.
+        /// </summary>
         public void Disconnect()
         {
             _autoReconnect = false;
             StopRetryCountdown();
             _connectCts?.Cancel();
-            DetachSession();
+
+            if (_session is { } session)
+            {
+                SshTeardown.DisposeInBackground(session);
+            }
         }
 
         public void FocusTerminal()
@@ -747,6 +796,14 @@ namespace Claret.Controls
 
                 case 'k': // window-level chord
                     RaiseCommand(body);
+                    break;
+
+                case 'b': // the buffer as base64 UTF-8 text, answering CaptureBufferAsync
+                    if (TryDecodeBase64(body, out byte[] bufferBytes))
+                    {
+                        _bufferCapture?.TrySetResult(Encoding.UTF8.GetString(bufferBytes));
+                    }
+
                     break;
             }
         }

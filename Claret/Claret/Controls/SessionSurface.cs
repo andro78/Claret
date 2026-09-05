@@ -1223,6 +1223,11 @@ namespace Claret.Controls
             var log = new MenuFlyoutItem { Text = "Log to file…" };
             log.Click += (_, _) => LogRequested?.Invoke(this, view);
 
+            // A one-shot snapshot of what's already in the buffer, unlike Log to file's continuous
+            // recording from here on — useful on its own for a pane sitting on "Session ended".
+            var saveOutput = new MenuFlyoutItem { Text = "Save output…" };
+            saveOutput.Click += (_, _) => SaveOutputRequested?.Invoke(this, view);
+
             // Per-tab, not app-wide: this pane's font changes without touching any other open one.
             var font = new MenuFlyoutItem { Text = "Font…" };
             font.Click += (_, _) => FontRequested?.Invoke(this, view);
@@ -1240,6 +1245,7 @@ namespace Claret.Controls
             menu.Items.Add(splitDown);
             menu.Items.Add(new MenuFlyoutSeparator());
             menu.Items.Add(log);
+            menu.Items.Add(saveOutput);
             menu.Items.Add(font);
             menu.Items.Add(colors);
             menu.Items.Add(breakItem);
@@ -1278,6 +1284,9 @@ namespace Claret.Controls
 
         /// <summary>The user asked to start or stop recording this session; the shell picks the file.</summary>
         public event EventHandler<TerminalView>? LogRequested;
+
+        /// <summary>The user asked to save this tab's current buffer to a file, once, right now.</summary>
+        public event EventHandler<TerminalView>? SaveOutputRequested;
 
         /// <summary>The user asked to change just this tab's font.</summary>
         public event EventHandler<TerminalView>? FontRequested;

@@ -360,6 +360,26 @@
                 return { text: text, columns: columns };
             }
 
+            // Everything currently in the buffer — scrollback plus the visible screen — as plain
+            // text, so a pane that has stopped (a serial port just closed, say) can still have what
+            // it already showed saved to a file. translateToString resolves wide glyphs and
+            // combining marks on its own, unlike readRow, which exists only for column bookkeeping.
+            function bufferText() {
+                var buf = term.buffer.active;
+                var lines = [];
+
+                for (var i = 0; i < buf.length; i++) {
+                    var line = buf.getLine(i);
+                    lines.push(line ? line.translateToString(true) : '');
+                }
+
+                while (lines.length > 0 && lines[lines.length - 1] === '') {
+                    lines.pop();
+                }
+
+                return lines.join('\n');
+            }
+
             // ---- answering an AI CLI approval prompt -----------------------------------------
             // Codex and Claude Code stop on a numbered list whose first entry is "Yes": option 1
             // runs the command, option 2 runs it and stops asking, and the last one refuses. Gemini
@@ -771,6 +791,9 @@
                                 term.options.fontSize = size;
                                 safeFit();
                             }
+                            break;
+                        case 'b': // host asked for the buffer as plain text, to save to a file
+                            post('b' + base64FromString(bufferText()));
                             break;
                         case 'l': // scrollback line count, e.g. "l5000"
                             var lines = parseInt(body, 10);

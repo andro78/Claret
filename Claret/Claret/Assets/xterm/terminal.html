@@ -657,6 +657,9 @@
                     if (upper === 'T') { post('knewtab'); return claim(ev); }
                     if (upper === 'W') { post('kclosesession'); return claim(ev); }
                     if (upper === 'B') { post('ksidebar'); return claim(ev); }
+                    // Plain Ctrl+F stays with the shell (readline binds it to forward-char), so
+                    // Find follows the other window chords onto Ctrl+Shift instead.
+                    if (upper === 'F') { post('kfind'); return claim(ev); }
                     // Opens DevTools, and only a debug build answers. Nothing else reaches the
                     // page's own console: F12 is disabled with the browser accelerator keys, and
                     // right-click is paste.

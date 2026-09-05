@@ -829,6 +829,12 @@ namespace Claret.Controls
                 return;
             }
 
+            if (name == "find")
+            {
+                _ = ShowFindDialogAsync();
+                return;
+            }
+
             TerminalCommand? command = name switch
             {
                 "newtab" => TerminalCommand.NewTab,

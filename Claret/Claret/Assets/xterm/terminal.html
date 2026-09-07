@@ -26,6 +26,73 @@
             inset: 6px 4px 6px 8px;
         }
 
+        /*
+           Search bar. Sits over the terminal at the top right rather than pushing the grid down:
+           resizing the grid would send a window-change to the remote PTY, and a TUI would redraw
+           itself smaller every time someone looked for a word.
+        */
+        #find {
+            position: absolute;
+            top: 8px;
+            right: 16px;
+            z-index: 20;
+            display: none;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 8px;
+            border-radius: 6px;
+            background: #1c1c1c;
+            border: 1px solid #3a3a3a;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+            font: 12px 'Segoe UI', system-ui, sans-serif;
+            color: #e6e6e6;
+        }
+
+        #find.active { display: flex; }
+
+        #find input {
+            width: 190px;
+            padding: 4px 6px;
+            border: 1px solid #4a4a4a;
+            border-radius: 4px;
+            background: #101010;
+            color: #e6e6e6;
+            font: inherit;
+            outline: none;
+        }
+
+        #find input:focus { border-color: #8C2332; }
+
+        /* No match is worth saying in the field itself — the eye is already there. */
+        #find input.empty { border-color: #c50f1f; }
+
+        #find button {
+            min-width: 24px;
+            height: 24px;
+            padding: 0 6px;
+            border: 1px solid #4a4a4a;
+            border-radius: 4px;
+            background: #262626;
+            color: #e6e6e6;
+            font: inherit;
+            cursor: pointer;
+        }
+
+        #find button:hover { background: #333; }
+
+        #find button.on {
+            background: #8C2332;
+            border-color: #8C2332;
+        }
+
+        #find .count {
+            min-width: 58px;
+            text-align: right;
+            color: #a0a0a0;
+            font-variant-numeric: tabular-nums;
+        }
+
+
         /* WebView2 renders its own scrollbar chrome; keep xterm's slim and dark. */
         .xterm-viewport::-webkit-scrollbar { width: 10px; }
         .xterm-viewport::-webkit-scrollbar-track { background: transparent; }
@@ -39,9 +106,20 @@
 <body>
     <div id="term"></div>
 
+    <div id="find">
+        <input id="findInput" type="text" placeholder="Find" spellcheck="false" autocomplete="off" />
+        <span id="findCount" class="count"></span>
+        <button id="findCase" title="Match case">Aa</button>
+        <button id="findRegex" title="Regular expression">.*</button>
+        <button id="findPrev" title="Previous (Shift+Enter)">&#8593;</button>
+        <button id="findNext" title="Next (Enter)">&#8595;</button>
+        <button id="findClose" title="Close (Esc)">&#10005;</button>
+    </div>
+
     <script src="./xterm.js"></script>
     <script src="./addon-fit.js"></script>
     <script src="./addon-webgl.js"></script>
+    <script src="./addon-search.js"></script>
     <script>
         (function () {
             'use strict';
@@ -659,7 +737,12 @@
                     if (upper === 'B') { post('ksidebar'); return claim(ev); }
                     // Plain Ctrl+F stays with the shell (readline binds it to forward-char), so
                     // Find follows the other window chords onto Ctrl+Shift instead.
-                    if (upper === 'F') { post('kfind'); return claim(ev); }
+                    //
+                    // The chord opens the bar below, which walks between matches. The host's
+                    // one-shot dialog is still on the right-click menu: it jumps to the first
+                    // match and says which line, which is the whole job when you only want to
+                    // know whether a word is in the scrollback at all.
+                    if (upper === 'F') { openFind(); return claim(ev); }
                     // Opens DevTools, and only a debug build answers. Nothing else reaches the
                     // page's own console: F12 is disabled with the browser accelerator keys, and
                     // right-click is paste.
@@ -680,6 +763,162 @@
                 }
 
                 return true;
+            });
+
+            // ---- scrollback search ---------------------------------------------------------
+            /*
+                The addon owns the searching; this is the bar that drives it. Matches are drawn as
+                decorations, which is proposed API in xterm and the reason allowProposedApi is on
+                above — without it registerDecoration throws and nothing would be highlighted.
+
+                The bar floats over the terminal instead of taking a row of its own. Anything that
+                changes the grid sends a window-change down the wire, and a TUI would redraw itself
+                a line shorter every time someone searched.
+            */
+            var findBar = document.getElementById('find');
+            var findInput = document.getElementById('findInput');
+            var findCount = document.getElementById('findCount');
+            var findCase = document.getElementById('findCase');
+            var findRegex = document.getElementById('findRegex');
+            var searchAddon = null;
+            var matchCase = false;
+            var useRegex = false;
+
+            (function attachSearch() {
+                if (typeof SearchAddon === 'undefined') {
+                    post('esearch addon missing');
+                    return;
+                }
+
+                try {
+                    searchAddon = new SearchAddon.SearchAddon();
+                    term.loadAddon(searchAddon);
+                    // The count is reported by the addon rather than counted here: it knows what it
+                    // matched, including how far through the scrollback the current hit is.
+                    if (searchAddon.onDidChangeResults) {
+                        searchAddon.onDidChangeResults(function (results) {
+                            if (!results || results.resultCount === 0) {
+                                findCount.textContent = findInput.value ? '0/0' : '';
+                                findInput.classList.toggle('empty', findInput.value.length > 0);
+                                return;
+                            }
+
+                            findInput.classList.remove('empty');
+                            findCount.textContent = (results.resultIndex + 1) + '/' + results.resultCount;
+                        });
+                    }
+                } catch (e) {
+                    post('esearch unavailable: ' + e);
+                }
+            })();
+
+            function searchOptions() {
+                return {
+                    caseSensitive: matchCase,
+                    regex: useRegex,
+                    decorations: {
+                        matchBackground: '#4a3a12',
+                        matchOverviewRuler: '#c19c00',
+                        activeMatchBackground: '#8C2332',
+                        activeMatchColorOverviewRuler: '#f5c542'
+                    }
+                };
+            }
+
+            function findStep(forward) {
+                if (!searchAddon || !findInput.value) {
+                    findCount.textContent = '';
+                    findInput.classList.remove('empty');
+                    return;
+                }
+
+                var found = forward
+                    ? searchAddon.findNext(findInput.value, searchOptions())
+                    : searchAddon.findPrevious(findInput.value, searchOptions());
+
+                // Older builds of the addon report nothing through onDidChangeResults; fall back to
+                // the boolean so the field still says whether anything matched.
+                if (!searchAddon.onDidChangeResults) {
+                    findInput.classList.toggle('empty', !found);
+                }
+            }
+
+            function openFind() {
+                if (!searchAddon) {
+                    return;
+                }
+
+                findBar.classList.add('active');
+
+                // A selection is nearly always what someone is about to search for.
+                var selection = term.getSelection();
+                if (selection && selection.indexOf('\n') === -1) {
+                    findInput.value = selection;
+                }
+
+                findInput.focus();
+                findInput.select();
+
+                if (findInput.value) {
+                    findStep(true);
+                }
+            }
+
+            function closeFind() {
+                findBar.classList.remove('active');
+                findCount.textContent = '';
+                findInput.classList.remove('empty');
+
+                if (searchAddon && searchAddon.clearDecorations) {
+                    searchAddon.clearDecorations();
+                }
+
+                term.focus();
+            }
+
+            findInput.addEventListener('input', function () {
+                // Search from where the view is rather than from the last hit, so editing the term
+                // does not walk the viewport away from what the user is looking at.
+                if (searchAddon && findInput.value) {
+                    searchAddon.findNext(findInput.value, searchOptions());
+                } else {
+                    findCount.textContent = '';
+                    findInput.classList.remove('empty');
+                    if (searchAddon && searchAddon.clearDecorations) {
+                        searchAddon.clearDecorations();
+                    }
+                }
+            });
+
+            findInput.addEventListener('keydown', function (ev) {
+                if (ev.key === 'Enter') {
+                    ev.preventDefault();
+                    findStep(!ev.shiftKey);
+                } else if (ev.key === 'Escape') {
+                    ev.preventDefault();
+                    closeFind();
+                }
+
+                // Everything else belongs to the field, and must not reach the terminal's handler.
+                ev.stopPropagation();
+            });
+
+            document.getElementById('findNext').addEventListener('click', function () { findStep(true); });
+            document.getElementById('findPrev').addEventListener('click', function () { findStep(false); });
+            document.getElementById('findClose').addEventListener('click', closeFind);
+
+            findCase.addEventListener('click', function () {
+                matchCase = !matchCase;
+                findCase.classList.toggle('on', matchCase);
+                findInput.focus();
+                findStep(true);
+            });
+
+            findRegex.addEventListener('click', function () {
+                useRegex = !useRegex;
+                findRegex.classList.toggle('on', useRegex);
+                findInput.focus();
+                findStep(true);
             });
 
             // ---- selection and clipboard ---------------------------------------------------

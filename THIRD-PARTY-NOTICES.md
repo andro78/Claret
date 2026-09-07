@@ -12,16 +12,20 @@ Claret이 배포본에 함께 담아 나가는 구성 요소들이다. MIT 라�
 
 터미널 에뮬레이션. `Claret/Claret/Assets/xterm/`에 npm 배포본을 그대로 담아 나간다.
 같은 라이선스 파일이 그 폴더에도 함께 배포된다(`LICENSE-xterm.txt`,
-`LICENSE-xterm-addon-webgl.txt`).
+`LICENSE-xterm-addon-webgl.txt`, `LICENSE-xterm-addon-search.txt`).
 
 - https://github.com/xtermjs/xterm.js — MIT
-- `@xterm/addon-fit`, `@xterm/addon-webgl` 애드온 포함
+- 버전: 코어 `@xterm/xterm` 6.0.0, `@xterm/addon-fit` 0.11.0, `@xterm/addon-webgl` 0.19.0,
+  `@xterm/addon-search` 0.16.0
+- 담을 때 dist 파일 끝의 `//# sourceMappingURL=…` 한 줄만 지운다(맵 파일은 함께 배포하지
+  않으므로). 그 외에는 바이트 단위로 같다
 
 ```
 Copyright (c) 2017-2019, The xterm.js authors (https://github.com/xtermjs/xterm.js)
 Copyright (c) 2014-2016, SourceLair Private Company (https://www.sourcelair.com)
 Copyright (c) 2012-2013, Christopher Jeffrey (https://github.com/chjj/)
 Copyright (c) 2018, The xterm.js authors (https://github.com/xtermjs/xterm.js)
+Copyright (c) 2017, The xterm.js authors (https://github.com/xtermjs/xterm.js)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

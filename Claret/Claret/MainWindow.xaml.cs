@@ -95,6 +95,7 @@ namespace Claret
         private bool _dockHintOnRight;
 
         private bool _sidebarVisible = true;
+        private bool _detectionsDismissed;
         private bool _dialogOpen;
 
         public MainWindow()
@@ -166,6 +167,7 @@ namespace Claret
             Serial.Initialize(_layoutStore.Current.Serial);
             Serial.OpenRequested += (_, settings) => _ = OpenSerialAsync(settings);
             Serial.CloseRequested += (_, port) => CloseSerialPort(port);
+            Serial.ReconnectRequested += (_, port) => _ = ReconnectSerialPortAsync(port);
             Serial.SettingsChanged += (_, settings) =>
             {
                 _layoutStore.Current.Serial = settings;
@@ -178,6 +180,9 @@ namespace Claret
             // Nothing to arm at startup: the AI auto-answer is per session and starts off.
             _surface.PlatformLearned += OnPlatformLearned;
             _surface.AutoApproved += OnSurfaceAutoApproved;
+            _surface.TextDetected += OnSurfaceTextDetected;
+            Detections.PaneRequested += (_, view) => _surface.Activate(view);
+            Detections.CloseRequested += (_, _) => ShowDetections(false);
             _surface.LogRequested += (_, view) => _ = ToggleSessionLogAsync(view);
             _surface.SaveOutputRequested += (_, view) => _ = SaveOutputAsync(view);
             _surface.FontRequested += (_, view) => _ = ApplyFontToPaneAsync(view);
@@ -913,6 +918,57 @@ namespace Claret
         /// disconnects — the tab's own ✕ is still what removes it — so the scrollback stays on
         /// screen and Reconnect can open the same port again without losing it.
         /// </summary>
+        /// <summary>How tall the detections strip stands when it is open.</summary>
+        private const double DetectionsHeight = 170;
+
+        /// <summary>
+        /// A pane printed a line someone asked to be told about. The panel opens itself for the
+        /// first one: a report nobody sees is not a report, and the panel is closed until there is
+        /// something in it. Once the user closes it by hand it stays closed — the rows keep coming,
+        /// they are just no longer pushed in front of them.
+        /// </summary>
+        private void OnSurfaceTextDetected(object? sender, TextDetection hit)
+        {
+            Detections.Add(hit.Source, _surface.LabelOf(hit.Source), hit.At, hit.Line);
+
+            if (!_detectionsDismissed)
+            {
+                ShowDetections(true);
+            }
+        }
+
+        private void ShowDetections(bool show)
+        {
+            DetectionsHost.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            DetectionsRow.Height = new GridLength(show ? DetectionsHeight : 0);
+
+            // Closing it is a decision about this run, not a preference: it opens again for the
+            // next session, and reopening it here arms that first automatic show once more.
+            _detectionsDismissed = !show;
+        }
+
+        /// <summary>
+        /// Builds the line again for that port. A pane already showing it is reused whatever state
+        /// it is in — reconnecting into the same pane keeps the log that is already there, and a
+        /// second tab for one cable would be a worse answer. With no pane at all this is just Open.
+        /// </summary>
+        private async Task ReconnectSerialPortAsync(string portName)
+        {
+            if (_surface.FindSerialPane(portName) is { } view)
+            {
+                _surface.Activate(view);
+                await view.ReconnectNowAsync();
+            }
+            else
+            {
+                SerialConnection settings = Serial.Current;
+                settings.PortName = portName;
+                await OpenSerialAsync(settings);
+            }
+
+            UpdateSerialPorts();
+        }
+
         private void CloseSerialPort(string portName)
         {
             if (_surface.FindSerialSession(portName) is { } view)

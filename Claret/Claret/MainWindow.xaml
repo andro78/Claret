@@ -505,10 +505,27 @@
             <Grid x:Name="SessionArea" Grid.Column="2">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
+                    <!--
+                        Height 0 until something is detected. The panel opens itself on the first
+                        hit — being told is the point of asking to be told — and closing it puts it
+                        back to nothing rather than leaving a stub with a header on it.
+                    -->
+                    <RowDefinition x:Name="DetectionsRow" Height="0" />
                 </Grid.RowDefinitions>
 
                 <!-- Every tab strip lives inside its own pane, so there is no global strip. -->
                 <Grid x:Name="SurfaceHost" Grid.Row="0" />
+
+                <Border x:Name="DetectionsHost"
+                        Grid.Row="1"
+                        Margin="2,0,8,4"
+                        CornerRadius="8"
+                        Visibility="Collapsed"
+                        Background="{ThemeResource LayerFillColorDefaultBrush}"
+                        BorderThickness="1"
+                        BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}">
+                    <local2:DetectionsView x:Name="Detections" />
+                </Border>
 
                 <StackPanel x:Name="EmptyState"
                             Grid.Row="0"

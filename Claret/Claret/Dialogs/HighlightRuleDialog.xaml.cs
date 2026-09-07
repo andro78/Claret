@@ -29,6 +29,7 @@ namespace Claret.Dialogs
             {
                 PatternBox.Text = existing.Pattern;
                 IgnoreCaseCheck.IsChecked = existing.IgnoreCase;
+                DetectCheck.IsChecked = existing.Detect;
             }
 
             // Set here rather than in markup: a Checked event raised while the dialog is still
@@ -121,6 +122,7 @@ namespace Claret.Dialogs
             {
                 Pattern = pattern,
                 IgnoreCase = IgnoreCaseCheck.IsChecked == true,
+                Detect = DetectCheck.IsChecked == true,
                 // Keep the picked colour even on Auto: switching back to Custom later restores it.
                 Color = ToHex(Picker.Color),
                 AutoColor = IsAuto,

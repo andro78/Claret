@@ -765,6 +765,38 @@
                 return true;
             });
 
+            // ---- putting the emulator back to defaults --------------------------------------
+            /*
+                Modes belong to the emulator, not to the connection. A TUI that turns on mouse
+                tracking or focus reporting and dies without turning them off leaves them on, and
+                the terminal outlives the session: reconnecting hands a brand new shell a terminal
+                that is still reporting. The shell never asked for any of it, so every mouse move
+                arrives as text — "^[[<35;38;35M" down the prompt — and typing looks broken because
+                the line is already full of it.
+
+                So the modes are put back whenever a session starts. Written as escape sequences
+                rather than term.reset(), which would also empty the scrollback: on a board console
+                that scrollback is usually the reason the window is still open.
+            */
+            function resetModes() {
+                term.write(
+                    '\x1b[?1000l' +   // VT200 mouse
+                    '\x1b[?1001l' +   // highlight mouse
+                    '\x1b[?1002l' +   // button-event mouse
+                    '\x1b[?1003l' +   // any-event mouse: the one that reports plain movement
+                    '\x1b[?1004l' +   // focus reporting, the "^[[I" on reconnect
+                    '\x1b[?1005l' +   // UTF-8 mouse encoding
+                    '\x1b[?1006l' +   // SGR mouse encoding
+                    '\x1b[?1015l' +   // urxvt mouse encoding
+                    '\x1b[?2004l' +   // bracketed paste
+                    '\x1b[?1049l' +   // back off the alternate screen, if a TUI died on it
+                    '\x1b[?1l' +      // cursor keys normal, so the arrows send what a shell expects
+                    '\x1b>' +         // keypad numeric
+                    '\x1b[?7h' +      // autowrap, the default
+                    '\x1b[?25h' +     // cursor visible: a TUI may have hidden it
+                    '\x1b[0m');       // no leftover colour or bold
+            }
+
             // ---- scrollback search ---------------------------------------------------------
             /*
                 The addon owns the searching; this is the bar that drives it. Matches are drawn as
@@ -991,8 +1023,23 @@
                             safeFit();
                             break;
                         case 'x':
-                            term.clear();
+                            if (body === '1') {
+                                /*
+                                    Everything, not just the lines above the cursor. term.clear()
+                                    keeps the current one — right when a prompt is sitting on it,
+                                    wrong when the point is to start the next run from an empty
+                                    screen. 2J wipes the screen, 3J the saved lines behind it, H
+                                    puts the cursor back in the corner.
+                                */
+                                term.write('\x1b[3J\x1b[2J\x1b[H');
+                            } else {
+                                term.clear();
+                            }
+
                             scheduleHighlight();
+                            break;
+                        case 'u': // put the emulator's modes back to defaults
+                            resetModes();
                             break;
                         case 'h': // theme patch, e.g. {"background":"#101820","foreground":"#d8e0e8"}
                             try {

@@ -103,6 +103,7 @@ namespace Claret.Controls
             view.TitleChanged += OnSessionTitleChanged;
             view.PlatformDetected += OnSessionPlatformDetected;
             view.AutoApproved += OnSessionAutoApproved;
+            view.TextDetected += OnSessionTextDetected;
 
             var tab = new TabViewItem
             {
@@ -183,6 +184,7 @@ namespace Claret.Controls
             view.TitleChanged -= OnSessionTitleChanged;
             view.PlatformDetected -= OnSessionPlatformDetected;
             view.AutoApproved -= OnSessionAutoApproved;
+            view.TextDetected -= OnSessionTextDetected;
 
             TabViewItem? tab = leaf.Group.Detach(view);
             if (tab is not null)
@@ -237,6 +239,24 @@ namespace Claret.Controls
                     && string.Equals(serial.PortName, portName, StringComparison.OrdinalIgnoreCase)
                     && view.State is TerminalState.Connected or TerminalState.Connecting
                         or TerminalState.Reconnecting);
+
+        /// <summary>
+        /// A pane for that port whatever state it is in, preferring a live one. FindSerialSession
+        /// answers "is this port open"; this answers "is there a pane for it" — which is the
+        /// question when the pane is being reconnected or cleared, and a closed one still counts.
+        /// </summary>
+        public TerminalView? FindSerialPane(string portName)
+        {
+            List<TerminalView> panes = Leaves()
+                .SelectMany(leaf => leaf.Group.Sessions)
+                .Where(view => view.Serial is { } serial
+                    && string.Equals(serial.PortName, portName, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            return panes.FirstOrDefault(view => view.State is TerminalState.Connected
+                       or TerminalState.Connecting or TerminalState.Reconnecting)
+                ?? panes.FirstOrDefault();
+        }
 
         /// <summary>
         /// The ports this window is holding open. The serial panel draws its button from this, so
@@ -870,6 +890,20 @@ namespace Claret.Controls
 
         private void OnSessionAutoApproved(object? sender, string option) =>
             AutoApproved?.Invoke(this, option);
+
+        /// <summary>A pane printed a line carrying text a rule asked to be watched for.</summary>
+        public event EventHandler<TextDetection>? TextDetected;
+
+        private void OnSessionTextDetected(object? sender, TextDetection hit) =>
+            TextDetected?.Invoke(this, hit);
+
+        /// <summary>The tab header a pane is showing, for naming it somewhere else in the window.</summary>
+        public string LabelOf(TerminalView view) =>
+            FindTab(view)?.Header as string
+                ?? (view.SessionLabel.Length > 0 ? view.SessionLabel : "session");
+
+        private TabViewItem? FindTab(TerminalView view) =>
+            Leaves().Select(leaf => leaf.Group.FindTab(view)).FirstOrDefault(tab => tab is not null);
 
         private static SymbolIconSource Symbolic(Symbol symbol) => new() { Symbol = symbol };
 

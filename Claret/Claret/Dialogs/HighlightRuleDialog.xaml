@@ -22,6 +22,10 @@
                   Content="Ignore case"
                   IsChecked="True" />
 
+        <!-- Watching is separate from colouring: you can want to be told without wanting paint. -->
+        <CheckBox x:Name="DetectCheck"
+                  Content="Report matching lines in the detections panel" />
+
         <StackPanel Spacing="4">
             <TextBlock Text="Style" Style="{StaticResource CaptionTextBlockStyle}" />
             <StackPanel Orientation="Horizontal" Spacing="16">

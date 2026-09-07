@@ -191,17 +191,35 @@
             Opening and closing the same line are one decision seen from either side, and a dead
             "Open" sitting next to a live console is a state you have to read twice.
         -->
-        <Button x:Name="OpenButton"
-                Grid.Row="5"
-                Margin="4,8,2,2"
-                HorizontalAlignment="Stretch"
-                IsEnabled="False"
-                Style="{StaticResource AccentButtonStyle}"
-                Click="OnOpenClick">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <FontIcon x:Name="OpenIcon" Glyph="&#xE839;" FontSize="13" />
-                <TextBlock x:Name="OpenLabel" Text="Open port" />
-            </StackPanel>
-        </Button>
+        <Grid Grid.Row="5" Margin="4,8,2,2" ColumnSpacing="4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <Button x:Name="OpenButton"
+                    Grid.Column="0"
+                    HorizontalAlignment="Stretch"
+                    IsEnabled="False"
+                    Style="{StaticResource AccentButtonStyle}"
+                    Click="OnOpenClick">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon x:Name="OpenIcon" Glyph="&#xE839;" FontSize="13" />
+                    <TextBlock x:Name="OpenLabel" Text="Open port" />
+                </StackPanel>
+            </Button>
+
+            <!--
+                Reconnect, and it does not care whether the line is up. A board that was reset or
+                an adapter that was replugged leaves a connection that looks alive and carries
+                nothing, and building it again is the only way to find out.
+            -->
+            <Button x:Name="ReconnectButton"
+                    Grid.Column="1"
+                    IsEnabled="False"
+                    Click="OnReconnectClick">
+                <FontIcon Glyph="&#xE895;" FontSize="13" />
+            </Button>
+        </Grid>
     </Grid>
 </UserControl>

@@ -62,6 +62,16 @@ namespace Claret.Controls
     }
 
     /// <summary>
+    /// One line of output that carried text a highlight rule asked to be watched for. Carries the
+    /// pane as well as the line, because the point of watching is to hear about the pane you were
+    /// not looking at.
+    /// </summary>
+    public sealed record TextDetection(TerminalView Source, string Pattern, string Line)
+    {
+        public DateTime At { get; } = DateTime.Now;
+    }
+
+    /// <summary>
     /// Hosts xterm.js inside a WebView2 and pumps bytes between it and an <see cref="SshSession"/>.
     /// The WebView owns all VT parsing and rendering; this class is only the bridge.
     /// </summary>
@@ -95,6 +105,12 @@ namespace Claret.Controls
 
         private TerminalAppearance? _appearance;
         private List<HighlightRule>? _highlights;
+
+        // The watched subset of the rules, and the line assembler that feeds it. Both stay null
+        // while nothing is being watched for, which is the usual case and costs the output path
+        // one null check.
+        private List<HighlightRule>? _detects;
+        private OutputLines? _lines;
         private DispatcherQueueTimer? _retryTimer;
         private int _retrySecondsLeft;
         private int _retryAttempt;
@@ -147,6 +163,9 @@ namespace Claret.Controls
 
         /// <summary>Raised when an AI CLI prompt was answered automatically. Carries the option taken.</summary>
         public event EventHandler<string>? AutoApproved;
+
+        /// <summary>Raised for each output line carrying text a rule asked to be watched for.</summary>
+        public event EventHandler<TextDetection>? TextDetected;
 
         /// <summary>Raised when the user presses a window-level chord inside the terminal.</summary>
         public event EventHandler<TerminalCommand>? CommandRequested;
@@ -307,6 +326,11 @@ namespace Claret.Controls
                 return;
             }
 
+            // The page outlives the session, so a mode the last one left on is still on. Put them
+            // back before this session's first byte, or a shell that never asked for mouse
+            // reporting spends the connection being told where the pointer is.
+            Post("u");
+
             ITerminalLink session = open();
             _lastByteWasCr = false;
             _atLineStart = true;
@@ -426,6 +450,42 @@ namespace Claret.Controls
 
         public void ClearScreen() => Post("x");
 
+        /// <summary>
+        /// Empties everything the pane is holding — the screen, the line the cursor is on, and the
+        /// scrollback behind it. Clear on its own keeps the current line, which is right when a
+        /// shell prompt is sitting on it and wrong when a board has been pouring output for an hour
+        /// and the next run should start from nothing.
+        /// </summary>
+        public void ClearBuffer() => Post("x1");
+
+        /// <summary>
+        /// Drops the link and opens it again, whether or not it is up. A board that was reset, or
+        /// an adapter that was replugged, leaves a connection that looks alive and carries nothing;
+        /// the only way to know is to build it again.
+        ///
+        /// Named apart from the private ReconnectAsync the countdown uses, because they are not
+        /// the same event. That one is the pane recovering on its own and must not disturb the
+        /// retry policy it is in the middle of. This one is a person asking, and outranks it: a
+        /// countdown in flight is cancelled, and auto-reconnect comes back on even if Close had
+        /// turned it off, since asking for the link back is the opposite instruction.
+        /// </summary>
+        public Task ReconnectNowAsync()
+        {
+            if (_shuttingDown)
+            {
+                return Task.CompletedTask;
+            }
+
+            StopRetryCountdown();
+            _connectCts?.Cancel();
+            DetachSession();
+
+            _autoReconnect = true;
+            _retryAttempt = 0;
+
+            return ReopenAsync();
+        }
+
         /// <summary>Types text into the shell, as if the user had entered it at the prompt.</summary>
         public void SendInput(string text)
         {
@@ -503,7 +563,47 @@ namespace Claret.Controls
         public void ApplyHighlights(IReadOnlyList<HighlightRule> rules)
         {
             _highlights = rules.Where(rule => rule.IsUsable).Select(rule => rule.Clone()).ToList();
+
+            // The watched subset is kept apart so the output path can ask one cheap question. With
+            // nothing to watch for, the line assembler never runs at all.
+            _detects = _highlights.Where(rule => rule.IsDetecting).ToList();
+            if (_detects.Count == 0)
+            {
+                _lines = null;
+            }
+
             PostHighlights();
+        }
+
+        /// <summary>
+        /// Reports lines carrying watched text. Runs on complete lines only: a prompt is a line the
+        /// shell has not finished, and firing on it would report every keystroke echoed back.
+        /// </summary>
+        private void Detect(byte[] chunk)
+        {
+            if (_detects is not { Count: > 0 } rules)
+            {
+                return;
+            }
+
+            _lines ??= new OutputLines();
+
+            foreach (string line in _lines.Feed(chunk))
+            {
+                foreach (HighlightRule rule in rules)
+                {
+                    if (line.Contains(
+                            rule.Pattern,
+                            rule.IgnoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                    {
+                        TextDetected?.Invoke(this, new TextDetection(this, rule.Pattern, line));
+
+                        // One report per line, not one per rule that matched it. The line is the
+                        // event; which rule caught it first is not worth a second row.
+                        break;
+                    }
+                }
+            }
         }
 
         private void PostHighlights()
@@ -966,6 +1066,11 @@ namespace Claret.Controls
             var clear = new MenuFlyoutItem { Text = "Clear" };
             clear.Click += (_, _) => ClearScreen();
 
+            // Clear keeps the line the cursor is on, which is what you want with a prompt sitting
+            // there. This one keeps nothing, which is what you want before the next run.
+            var clearBuffer = new MenuFlyoutItem { Text = "Clear buffer" };
+            clearBuffer.Click += (_, _) => ClearBuffer();
+
             menu.Items.Add(copy);
             menu.Items.Add(paste);
             menu.Items.Add(new MenuFlyoutSeparator());
@@ -973,6 +1078,7 @@ namespace Claret.Controls
             menu.Items.Add(find);
             menu.Items.Add(new MenuFlyoutSeparator());
             menu.Items.Add(clear);
+            menu.Items.Add(clearBuffer);
 
             menu.ShowAt(Web, new FlyoutShowOptions { Position = new Point(x, y) });
         }
@@ -1148,6 +1254,10 @@ namespace Claret.Controls
             // Tee straight from the wire: what the log holds is what arrived, not what survived
             // the terminal's own redraws.
             _log?.Write(chunk);
+
+            // Off the wire as well, and before the display fixes up line endings or stamps times:
+            // what is being watched for is what the far end actually said.
+            Detect(chunk);
 
             // Display only, and after the log, so the file still holds the bytes as they came.
             if (_serial is not null)

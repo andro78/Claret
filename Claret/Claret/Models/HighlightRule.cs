@@ -54,6 +54,13 @@ namespace Claret.Models
         /// </summary>
         public bool TextOnly { get; set; }
 
+        /// <summary>
+        /// Also report every line carrying this text to the detections panel, with the pane it came
+        /// from. Highlighting answers "where is it on this screen"; detecting answers "did it happen
+        /// at all, and in which of the six panes I am not looking at".
+        /// </summary>
+        public bool Detect { get; set; }
+
         public bool Enabled { get; set; } = true;
 
         /// <summary>
@@ -87,6 +94,10 @@ namespace Claret.Models
         [JsonIgnore]
         public bool IsUsable => Enabled && Pattern.Length > 0;
 
+        /// <summary>Whether this rule should be watched for in the output at all.</summary>
+        [JsonIgnore]
+        public bool IsDetecting => IsUsable && Detect;
+
         /// <summary>Short description for the rule list.</summary>
         [JsonIgnore]
         public string Summary
@@ -96,7 +107,8 @@ namespace Claret.Models
                 string casing = IgnoreCase ? "any case" : "exact case";
                 string paint = TextOnly ? "text" : "block";
                 string colour = AutoColor ? " · auto colour" : string.Empty;
-                return $"{casing} · {paint}{colour}";
+                string watch = Detect ? " · detect" : string.Empty;
+                return $"{casing} · {paint}{colour}{watch}";
             }
         }
 
@@ -115,6 +127,7 @@ namespace Claret.Models
                 AutoColor = AutoColor,
                 TextOnly = TextOnly,
                 Enabled = Enabled,
+                Detect = Detect,
             };
 
             copy.EffectiveColor = EffectiveColor;

@@ -95,6 +95,12 @@ namespace Claret.Controls
         /// </summary>
         public event EventHandler<string>? CloseRequested;
 
+        /// <summary>
+        /// Raised when the user asks to build the line again, open or not. Carries the port name,
+        /// like Close: it names the line rather than the settings it was opened with.
+        /// </summary>
+        public event EventHandler<string>? ReconnectRequested;
+
         /// <summary>Raised when the settings change, so the shell can remember them.</summary>
         public event EventHandler<SerialConnection>? SettingsChanged;
 
@@ -224,6 +230,13 @@ namespace Claret.Controls
             OpenButton.IsEnabled = selected is not null;
             PinButton.IsEnabled = selected is not null;
 
+            // Enabled on any selected port, open or not: reconnecting a closed one just opens it,
+            // and the button meaning the same thing in both states is one less rule to learn.
+            ReconnectButton.IsEnabled = selected is not null;
+            ToolTipService.SetToolTip(
+                ReconnectButton,
+                selected is null ? null : $"Reconnect {selected.PortName}");
+
             if (selected is null)
             {
                 OpenLabel.Text = "Open port";
@@ -242,6 +255,14 @@ namespace Claret.Controls
             ToolTipService.SetToolTip(
                 OpenButton,
                 open ? $"Close the console on {selected.PortName}" : null);
+        }
+
+        private void OnReconnectClick(object sender, RoutedEventArgs e)
+        {
+            if (PortList.SelectedItem is SerialPortItem selected)
+            {
+                ReconnectRequested?.Invoke(this, selected.PortName);
+            }
         }
 
         private void OnPinClick(object sender, RoutedEventArgs e)

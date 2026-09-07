@@ -95,6 +95,12 @@ namespace Claret.Controls
         /// </summary>
         public event EventHandler<string>? CloseRequested;
 
+        /// <summary>
+        /// Raised when the user asks to empty the screen of the console on that port. Carries the
+        /// port name for the same reason Close does: it names the line, not the settings.
+        /// </summary>
+        public event EventHandler<string>? ClearRequested;
+
         /// <summary>Raised when the settings change, so the shell can remember them.</summary>
         public event EventHandler<SerialConnection>? SettingsChanged;
 
@@ -230,10 +236,20 @@ namespace Claret.Controls
                 OpenIcon.Glyph = PlugGlyph;
                 OpenButton.Style = (Style)Application.Current.Resources["AccentButtonStyle"];
                 ToolTipService.SetToolTip(OpenButton, null);
+                ClearButton.IsEnabled = false;
+                ToolTipService.SetToolTip(ClearButton, null);
                 return;
             }
 
             bool open = _open.Contains(selected.PortName);
+
+            // Only a console that is open has a screen worth emptying. A closed one is either not
+            // there at all or is being kept for what it already printed, which is the opposite of
+            // what this button does.
+            ClearButton.IsEnabled = open;
+            ToolTipService.SetToolTip(
+                ClearButton,
+                open ? $"Clear the console on {selected.PortName}" : null);
 
             OpenLabel.Text = open ? $"Close {selected.PortName}" : $"Open {selected.PortName}";
             OpenIcon.Glyph = open ? CloseGlyph : PlugGlyph;
@@ -321,6 +337,14 @@ namespace Claret.Controls
             }
 
             Open();
+        }
+
+        private void OnClearClick(object sender, RoutedEventArgs e)
+        {
+            if (PortList.SelectedItem is SerialPortItem selected && SelectionIsOpen)
+            {
+                ClearRequested?.Invoke(this, selected.PortName);
+            }
         }
 
         private void Open()

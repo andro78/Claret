@@ -7,20 +7,39 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
+    <UserControl.Resources>
+        <!--
+            The scrim is only for states with nothing behind it worth seeing — connecting, or a
+            connect that failed before a byte arrived. Once a session has printed something, that
+            output is the most useful thing in the pane and the overlay must not sit on top of it.
+        -->
+        <SolidColorBrush x:Key="OverlayScrim" Color="#E0101010" />
+        <SolidColorBrush x:Key="OverlayCardFill" Color="#F01C1C1C" />
+    </UserControl.Resources>
+
     <Grid>
         <Grid.Background>
             <SolidColorBrush x:Name="TerminalBackground" Color="#0C0C0C" />
         </Grid.Background>
         <WebView2 x:Name="Web" />
 
-        <!-- Covers the terminal while connecting and after the session ends. -->
+        <!--
+            Covers the terminal while connecting; steps aside once the session has ended, so what
+            it printed stays readable and selectable. With no Background the empty area of this
+            Grid does not hit-test, and the mouse reaches the terminal underneath — while the card
+            keeps its own, so the buttons on it still work.
+        -->
         <Grid x:Name="Overlay"
-              Background="#E0101010"
+              Background="{StaticResource OverlayScrim}"
               Visibility="Collapsed">
-            <StackPanel HorizontalAlignment="Center"
-                        VerticalAlignment="Center"
-                        Spacing="14"
-                        MaxWidth="520">
+            <Border x:Name="OverlayCard"
+                    Background="{x:Null}"
+                    CornerRadius="6"
+                    Padding="0"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    MaxWidth="520">
+            <StackPanel Spacing="14">
                 <ProgressRing x:Name="BusyRing"
                               Width="34"
                               Height="34"
@@ -60,6 +79,7 @@
                             Click="OnStopRetryClick" />
                 </StackPanel>
             </StackPanel>
+            </Border>
         </Grid>
     </Grid>
 </UserControl>

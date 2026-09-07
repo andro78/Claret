@@ -166,6 +166,7 @@ namespace Claret
             Serial.Initialize(_layoutStore.Current.Serial);
             Serial.OpenRequested += (_, settings) => _ = OpenSerialAsync(settings);
             Serial.CloseRequested += (_, port) => CloseSerialPort(port);
+            Serial.ClearRequested += (_, port) => _surface.FindSerialSession(port)?.ClearScreen();
             Serial.SettingsChanged += (_, settings) =>
             {
                 _layoutStore.Current.Serial = settings;
@@ -916,7 +917,10 @@ namespace Claret
         {
             if (_surface.FindSerialSession(portName) is { } view)
             {
-                _surface.CloseSession(view);
+                // Close the line, keep the pane. On a board console the boot log is usually the
+                // reason the port was opened, and closing it is not being finished with the log.
+                // The tab stays until the user closes the tab, which is a separate decision.
+                view.Disconnect();
             }
 
             UpdateSerialPorts();

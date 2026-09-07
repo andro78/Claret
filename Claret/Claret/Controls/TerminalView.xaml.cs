@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.Web.WebView2.Core;
 using Renci.SshNet.Common;
 using Windows.ApplicationModel.DataTransfer;
@@ -353,12 +354,28 @@ namespace Claret.Controls
             PlatformDetected?.Invoke(this, platform);
         }
 
+        /// <summary>
+        /// Drops the link and leaves the pane standing. What the session printed stays on screen
+        /// and stays selectable — closing a port is not the same as being finished with what came
+        /// out of it, and on a board console the boot log is usually the whole point.
+        /// </summary>
         public void Disconnect()
         {
             _autoReconnect = false;
             StopRetryCountdown();
             _connectCts?.Cancel();
             DetachSession();
+            FlushOutput();
+
+            SetState(TerminalState.Disconnected);
+
+            (string title, string detail) = _serial is { } serial
+                ? ($"{serial.PortName} closed",
+                    "The port is closed. What it printed is still here — select it to copy.")
+                : ("Session closed",
+                    "The connection is closed. What it printed is still here — select it to copy.");
+
+            ShowError(title, detail, canRetry: true, coverContent: false);
         }
 
         public void FocusTerminal()
@@ -1087,7 +1104,7 @@ namespace Claret.Controls
                 }
 
                 SetState(TerminalState.Disconnected);
-                ShowError("Session ended", reason ?? "The session has ended.", canRetry: true);
+                ShowError("Session ended", reason ?? "The session has ended.", canRetry: true, coverContent: false);
             });
         }
 
@@ -1278,6 +1295,7 @@ namespace Claret.Controls
 
         private void ShowBusy(string title, string detail)
         {
+            Cover();
             Overlay.Visibility = Visibility.Visible;
             BusyRing.IsActive = true;
             OverlayIcon.Visibility = Visibility.Collapsed;
@@ -1287,8 +1305,22 @@ namespace Claret.Controls
             OverlayDetail.Text = detail;
         }
 
-        private void ShowError(string title, string detail, bool canRetry)
+        /// <summary>
+        /// <paramref name="coverContent"/> false leaves the scrollback readable and selectable, and
+        /// is what an ended session wants: its output is the reason anyone is still looking at the
+        /// pane. True is for a connect that failed with nothing behind the overlay to hide.
+        /// </summary>
+        private void ShowError(string title, string detail, bool canRetry, bool coverContent = true)
         {
+            if (coverContent)
+            {
+                Cover();
+            }
+            else
+            {
+                StepAside();
+            }
+
             Overlay.Visibility = Visibility.Visible;
             BusyRing.IsActive = false;
             OverlayIcon.Visibility = Visibility.Visible;
@@ -1296,6 +1328,30 @@ namespace Claret.Controls
             StopRetryButton.Visibility = Visibility.Collapsed;
             OverlayTitle.Text = title;
             OverlayDetail.Text = detail;
+        }
+
+        /// <summary>Scrim across the pane, message in the middle of it.</summary>
+        private void Cover()
+        {
+            Overlay.Background = (Brush)Resources["OverlayScrim"];
+            OverlayCard.Background = null;
+            OverlayCard.Padding = new Thickness(0);
+            OverlayCard.Margin = new Thickness(0);
+            OverlayCard.VerticalAlignment = VerticalAlignment.Center;
+        }
+
+        /// <summary>
+        /// Message as a card at the top, no scrim. The Grid keeps no Background, so its empty area
+        /// stops hit-testing and the mouse reaches the terminal: the scrollback can be read,
+        /// selected and copied while the card still takes the clicks meant for its buttons.
+        /// </summary>
+        private void StepAside()
+        {
+            Overlay.Background = null;
+            OverlayCard.Background = (Brush)Resources["OverlayCardFill"];
+            OverlayCard.Padding = new Thickness(20, 14, 20, 16);
+            OverlayCard.Margin = new Thickness(12, 12, 12, 0);
+            OverlayCard.VerticalAlignment = VerticalAlignment.Top;
         }
 
         private void HideOverlay()

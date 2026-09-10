@@ -121,14 +121,17 @@ namespace Claret.Controls
             // regardless of where in its template the accelerator lives; clearing the close
             // button's own accelerator collection (best-effort — the part name can change between
             // WinUI versions) also stops a remote-bound Ctrl+F4 from being eaten and closing the tab.
+            // Setting it on the tab was not enough: the property does not travel down a template,
+            // and the tooltip belongs to the close button inside it, which keeps its own default.
+            // So the button is reached and silenced directly — the accelerator dropped, the
+            // placement hidden, and the tooltip itself cleared, because the TabView template also
+            // sets a "Close (Ctrl+F4)" string of its own that no accelerator setting touches.
+            //
+            // Clearing it outright rather than replacing the text: over a WebView2 the pointer
+            // leaves through an airspace boundary XAML never sees, so a tooltip that opens here has
+            // nothing to close it and sits on the window until something else redraws over it.
             tab.KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
-            tab.Loaded += (_, _) =>
-            {
-                if (FindDescendant<Button>(tab, "CloseButton") is { } closeButton)
-                {
-                    closeButton.KeyboardAccelerators.Clear();
-                }
-            };
+            tab.Loaded += (_, _) => SilenceCloseButton(tab);
 
             leaf.Group.Add(tab);
 
@@ -1419,6 +1422,47 @@ namespace Claret.Controls
             if (sender is TerminalView view && ReferenceEquals(view, ActiveView))
             {
                 ActiveSessionChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+
+        /// <summary>
+        /// Takes the Ctrl+F4 chord and its tooltip off a tab's close button.
+        ///
+        /// The button is found by name first, and by type if that fails: the part name is the
+        /// template's business and has changed between WinUI versions, while a TabViewItem having
+        /// exactly one Button in it has not. Every Button found is silenced, so a template with the
+        /// part renamed is still covered.
+        /// </summary>
+        private static void SilenceCloseButton(DependencyObject tab)
+        {
+            List<Button> buttons = FindDescendant<Button>(tab, "CloseButton") is { } named
+                ? new List<Button> { named }
+                : Descendants<Button>(tab).ToList();
+
+            foreach (Button button in buttons)
+            {
+                button.KeyboardAccelerators.Clear();
+                button.KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
+                ToolTipService.SetToolTip(button, null);
+            }
+        }
+
+        private static IEnumerable<T> Descendants<T>(DependencyObject root)
+            where T : DependencyObject
+        {
+            int count = VisualTreeHelper.GetChildrenCount(root);
+            for (int i = 0; i < count; i++)
+            {
+                DependencyObject child = VisualTreeHelper.GetChild(root, i);
+                if (child is T typed)
+                {
+                    yield return typed;
+                }
+
+                foreach (T found in Descendants<T>(child))
+                {
+                    yield return found;
+                }
             }
         }
 

@@ -588,6 +588,8 @@ namespace Claret.Controls
 
             _lines ??= new OutputLines();
 
+            List<TextDetection>? hits = null;
+
             foreach (string line in _lines.Feed(chunk))
             {
                 foreach (HighlightRule rule in rules)
@@ -596,7 +598,7 @@ namespace Claret.Controls
                             rule.Pattern,
                             rule.IgnoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
                     {
-                        TextDetected?.Invoke(this, new TextDetection(this, rule.Pattern, line));
+                        (hits ??= new List<TextDetection>()).Add(new TextDetection(this, rule.Pattern, line));
 
                         // One report per line, not one per rule that matched it. The line is the
                         // event; which rule caught it first is not worth a second row.
@@ -604,6 +606,28 @@ namespace Claret.Controls
                     }
                 }
             }
+
+            if (hits is null)
+            {
+                return;
+            }
+
+            /*
+                One hand-off for the whole read, not one per line. This runs on the session's reader
+                thread — the same reason the output below is given to TryEnqueue rather than drawn
+                here — and what listens puts rows in a bound collection, which is the UI thread's.
+
+                Per line it was also too many hand-offs. A board pouring out a boot log can match
+                hundreds of lines in a single read, and each one queued behind the last on the very
+                queue that draws the terminal, so the screen fell behind the cable.
+            */
+            _dispatcher.TryEnqueue(() =>
+            {
+                foreach (TextDetection hit in hits)
+                {
+                    TextDetected?.Invoke(this, hit);
+                }
+            });
         }
 
         private void PostHighlights()

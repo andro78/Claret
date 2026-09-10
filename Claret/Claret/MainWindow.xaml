@@ -68,6 +68,14 @@
                                               Text="Copy on selection"
                                               Click="OnCopyOnSelectClick" />
                         <!--
+                            The panel opens itself when a rule starts watching, so this is for
+                            putting it back after it has been closed, or looking at what it caught
+                            once the watching is over.
+                        -->
+                        <ToggleMenuFlyoutItem x:Name="DetectionsItem"
+                                              Text="Detections panel"
+                                              Click="OnDetectionsClick" />
+                        <!--
                             Serial only. A board console has no shell to pipe through `ts`, and a
                             boot log is read for when things happened, so the terminal is the only
                             thing in a position to say. Disabled when nothing on screen is serial.

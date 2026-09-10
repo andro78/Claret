@@ -158,8 +158,10 @@ namespace Claret
             {
                 _highlightStore.Save();
                 _surface.ApplyHighlights(_highlightStore.Rules);
+                SyncDetectionsPanel();
             };
             _surface.ApplyHighlights(_highlightStore.Rules);
+            SyncDetectionsPanel();
             _surface.ApplyCopyOnSelect(_layoutStore.Current.CopyOnSelect);
             _surface.ApplySerialTimestamps(_layoutStore.Current.SerialTimestamps);
 
@@ -939,12 +941,41 @@ namespace Claret
 
         private void ShowDetections(bool show)
         {
+            // Called once per detection, and a boot log brings them in hundreds. Re-setting a row
+            // height that is already right costs a layout pass on the window each time.
+            if ((DetectionsHost.Visibility == Visibility.Visible) == show)
+            {
+                _detectionsDismissed = !show;
+                return;
+            }
+
             DetectionsHost.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
             DetectionsRow.Height = new GridLength(show ? DetectionsHeight : 0);
 
             // Closing it is a decision about this run, not a preference: it opens again for the
             // next session, and reopening it here arms that first automatic show once more.
             _detectionsDismissed = !show;
+        }
+
+        /// <summary>
+        /// Opens the panel as soon as a rule is set to watch, rather than waiting for the first
+        /// match. Turning watching on and seeing nothing change gives no way to tell it took —
+        /// the empty panel saying it is watching is the answer. It closes again when the last
+        /// watching rule is turned off, unless the user has put it away by hand.
+        /// </summary>
+        private void SyncDetectionsPanel()
+        {
+            bool watching = _highlightStore.Rules.Any(rule => rule.IsDetecting);
+
+            if (watching && !_detectionsDismissed)
+            {
+                ShowDetections(true);
+            }
+            else if (!watching)
+            {
+                DetectionsHost.Visibility = Visibility.Collapsed;
+                DetectionsRow.Height = new GridLength(0);
+            }
         }
 
         /// <summary>
@@ -1771,6 +1802,9 @@ namespace Claret
             }
         }
 
+        private void OnDetectionsClick(object sender, RoutedEventArgs e) =>
+            ShowDetections(DetectionsItem.IsChecked);
+
         private void OnCopyOnSelectClick(object sender, RoutedEventArgs e)
         {
             _layoutStore.Current.CopyOnSelect = CopyOnSelectItem.IsChecked;
@@ -1944,6 +1978,7 @@ namespace Claret
         private void OnOptionsOpening(object sender, object e)
         {
             CopyOnSelectItem.IsChecked = _layoutStore.Current.CopyOnSelect;
+            DetectionsItem.IsChecked = DetectionsHost.Visibility == Visibility.Visible;
 
             // The preference is remembered either way; it is only greyed out to say that nothing
             // open right now would change if it were toggled.

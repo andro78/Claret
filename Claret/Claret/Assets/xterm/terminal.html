@@ -965,6 +965,37 @@
                 }
             }
 
+            /*
+                OSC 52 — the far end asking the terminal to put something on the clipboard, which is
+                the only way a program on the other side of a pipe can reach it. Without this the
+                sequence parses and is dropped, so anything that copies for you over SSH silently
+                does nothing: the remote says it sent the text, and it did, to a terminal that was
+                not listening.
+
+                The payload is already base64 of the bytes it wants copied, which is exactly what
+                the host's copy message carries, so it passes straight through without a decode and
+                re-encode in between.
+            */
+            term.parser.registerOscHandler(52, function (data) {
+                // Pc ; Pd — Pc names the selection ("c" is the clipboard), Pd is the base64.
+                var semi = data.indexOf(';');
+                if (semi < 0) {
+                    return true;
+                }
+
+                var payload = data.substring(semi + 1);
+
+                // "?" asks the terminal to send the clipboard back to the far end. Refused: that
+                // hands whatever is running there everything the user has copied since they last
+                // thought about it, and no shell command they typed asked for that.
+                if (payload === '?' || payload.length === 0) {
+                    return true;
+                }
+
+                post('c' + payload);
+                return true;
+            });
+
             // The host cannot see clicks landing inside the WebView, so tell it which pane was hit.
             // Middle-click pastes, the way X11 terminals do.
             term.element.addEventListener('mousedown', function (ev) {

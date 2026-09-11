@@ -1019,11 +1019,38 @@
             // Double-click (word) and triple-click (line) land as one mouseup each, so they are
             // already covered by the handler above.
 
-            // Right-click: hand off to the host's own menu (Copy/Paste/Find/Clear) rather than
-            // guessing which one action the click meant. Native WinUI, not an HTML menu, so it
-            // matches every other menu in the app and needs no styling of its own here.
-            term.element.addEventListener('contextmenu', function (ev) {
+            /*
+                Right-click inside the terminal does the one thing the click meant, the way PuTTY
+                has always done it: with a selection it copies, without one it pastes. Those are
+                the two states the grid can be in, and a menu asking which of them you wanted is a
+                question with an obvious answer.
+
+                Everywhere else — the margin around the grid, and the strip left below the last row
+                when the pane is not an exact number of cells tall — is not somewhere text is typed,
+                so that is where the menu belongs. Shift+right-click reaches it from inside the grid
+                too, because a menu findable only along a few pixels of border is a menu that is
+                gone, and Select All, Find and Clear live on it.
+
+                The menu is the host's own, native WinUI rather than an HTML one, so it matches
+                every other menu in the app and needs no styling here.
+            */
+            document.addEventListener('contextmenu', function (ev) {
                 ev.preventDefault();
+
+                var screen = term.element && term.element.querySelector('.xterm-screen');
+                var onGrid = screen && screen.contains(ev.target);
+
+                if (onGrid && !ev.shiftKey) {
+                    if (term.hasSelection()) {
+                        copySelection();
+                        term.clearSelection();
+                    } else {
+                        post('v');
+                    }
+
+                    return;
+                }
+
                 post('u' + (term.hasSelection() ? '1' : '0') + ',' + ev.clientX + ',' + ev.clientY);
             });
 

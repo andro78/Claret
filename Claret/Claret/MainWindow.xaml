@@ -577,24 +577,6 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <!--
-                    Installs an AI CLI on the host you are connected to. Items are built on
-                    Opening, because what they can do depends on the live session.
-                -->
-                <DropDownButton x:Name="AiButton"
-                                Grid.Column="0"
-                                Height="22"
-                                Padding="8,0"
-                                Margin="0,0,10,0"
-                                Background="Transparent"
-                                BorderThickness="0"
-                                ToolTipService.ToolTip="Install an AI CLI on this host">
-                    <TextBlock Text="AI" Style="{StaticResource CaptionTextBlockStyle}" />
-                    <DropDownButton.Flyout>
-                        <MenuFlyout x:Name="AiMenu" Placement="Top" Opening="OnAiMenuOpening" />
-                    </DropDownButton.Flyout>
-                </DropDownButton>
-
                 <TextBlock x:Name="StatusSession"
                            Grid.Column="1"
                            VerticalAlignment="Center"
@@ -616,22 +598,6 @@
                            Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                            Text="" />
-
-                <!--
-                    Shown only while the AI auto-answer is on. An automation that answers prompts
-                    on the user's behalf has to be visible while it is armed.
-                -->
-                <TextBlock x:Name="StatusAutoApprove"
-                           Grid.Column="3"
-                           Margin="0,0,12,0"
-                           VerticalAlignment="Center"
-                           TextWrapping="NoWrap"
-                           TextTrimming="CharacterEllipsis"
-                           MaxWidth="220"
-                           Visibility="Collapsed"
-                           Style="{StaticResource CaptionTextBlockStyle}"
-                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                           Text="auto-yes" />
 
                 <!--
                     Link health: a lamp for the state at a glance and the round trip in figures.

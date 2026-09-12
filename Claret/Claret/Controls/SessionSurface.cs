@@ -102,7 +102,6 @@ namespace Claret.Controls
             view.StateChanged += OnSessionStateChanged;
             view.TitleChanged += OnSessionTitleChanged;
             view.PlatformDetected += OnSessionPlatformDetected;
-            view.AutoApproved += OnSessionAutoApproved;
             view.TextDetected += OnSessionTextDetected;
 
             var tab = new TabViewItem
@@ -186,7 +185,6 @@ namespace Claret.Controls
             view.StateChanged -= OnSessionStateChanged;
             view.TitleChanged -= OnSessionTitleChanged;
             view.PlatformDetected -= OnSessionPlatformDetected;
-            view.AutoApproved -= OnSessionAutoApproved;
             view.TextDetected -= OnSessionTextDetected;
 
             TabViewItem? tab = leaf.Group.Detach(view);
@@ -347,21 +345,6 @@ namespace Claret.Controls
                 foreach (TerminalView view in leaf.Group.Sessions)
                 {
                     view.ApplyScrollback(lines);
-                }
-            }
-        }
-
-        /// <summary>
-        /// Turns the AI auto-answer off in every session. Arming it is per session and done on the
-        /// view itself; only the withdrawal is global, so a blocked host can be enforced at once.
-        /// </summary>
-        public void DisarmAutoApprove()
-        {
-            foreach (PaneLeafNode leaf in Leaves())
-            {
-                foreach (TerminalView view in leaf.Group.Sessions)
-                {
-                    view.ApplyAutoApprove(false);
                 }
             }
         }
@@ -887,12 +870,6 @@ namespace Claret.Controls
                 }
             }
         }
-
-        /// <summary>Raised when a session answered an AI prompt by itself; carries the option taken.</summary>
-        public event EventHandler<string>? AutoApproved;
-
-        private void OnSessionAutoApproved(object? sender, string option) =>
-            AutoApproved?.Invoke(this, option);
 
         /// <summary>A pane printed a line carrying text a rule asked to be watched for.</summary>
         public event EventHandler<TextDetection>? TextDetected;

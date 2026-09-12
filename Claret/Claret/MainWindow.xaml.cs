@@ -11,7 +11,6 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
-using Windows.ApplicationModel.DataTransfer;
 using Windows.Foundation;
 using Windows.Graphics;
 using Windows.Storage;
@@ -74,7 +73,6 @@ namespace Claret
 
         private TerminalView? _trafficView;
         private (long At, long Received, long Sent)? _trafficMark;
-        private string _lastAutoApproved = string.Empty;
         private NetworkHealth _networkHealth = NetworkHealth.None;
         private string _networkTooltip = string.Empty;
         private string? _pingHost;
@@ -179,9 +177,7 @@ namespace Claret
             Serial.PinRequested += (_, settings) => _ = PinSerialAsync(settings);
             Serial.RenameRequested += (_, profile) => _ = RenameSerialAsync(profile);
             Serial.UnpinRequested += (_, profile) => _serialProfileStore.Remove(profile);
-            // Nothing to arm at startup: the AI auto-answer is per session and starts off.
             _surface.PlatformLearned += OnPlatformLearned;
-            _surface.AutoApproved += OnSurfaceAutoApproved;
             _surface.TextDetected += OnSurfaceTextDetected;
             Detections.PaneRequested += (_, view) => _surface.Activate(view);
             Detections.CloseRequested += (_, _) => ShowDetections(false);
@@ -1292,7 +1288,6 @@ namespace Claret
             UpdateImeStatus();
             UpdateStatusSession();
             UpdateStatusFont();
-            UpdateStatusAutoApprove();
         }
 
         /// <summary>
@@ -1511,126 +1506,6 @@ namespace Claret
                 : (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
         }
 
-        // ---------- AI CLI installers ----------
-
-        /// <summary>
-        /// Built on Opening: the entries run against the live session, so what they can do depends
-        /// on whether one is connected.
-        /// </summary>
-        private void OnAiMenuOpening(object sender, object e)
-        {
-            AiMenu.Items.Clear();
-
-            TerminalView? view = _surface.ActiveView;
-            bool connected = view?.State == TerminalState.Connected;
-
-            // Where the script would run. A serial console is a shell too, so the port name serves
-            // as the destination just as an endpoint does.
-            string host = view?.SessionLabel ?? string.Empty;
-
-            foreach (AiTool tool in AiTool.All)
-            {
-                AiTool captured = tool;
-
-                var item = new MenuFlyoutItem
-                {
-                    Text = $"Install {tool.Name}",
-                    // The endpoint belongs on the item: this installs on the far end, not here.
-                    KeyboardAcceleratorTextOverride = connected ? host : "no session",
-                    IsEnabled = connected,
-                };
-
-                item.Click += (_, _) => _ = InstallAiToolAsync(captured);
-                AiMenu.Items.Add(item);
-            }
-
-            AiMenu.Items.Add(new MenuFlyoutSeparator());
-
-            foreach (AiTool tool in AiTool.All)
-            {
-                AiTool captured = tool;
-
-                var copy = new MenuFlyoutItem { Text = $"Copy {tool.Name} command" };
-                copy.Click += (_, _) => CopyText(captured.Script);
-                AiMenu.Items.Add(copy);
-            }
-
-            AiMenu.Items.Add(new MenuFlyoutSeparator());
-
-            // Says what it does in full: this answers a prompt whose whole purpose was to ask.
-            // Per session, because arming it is a decision about the task in front of you.
-            // Only an SSH host can be on the block list; a serial console has no host to name.
-            bool blocked = view?.Profile is { } current && IsAutoApproveBlocked(current.Host);
-
-            var auto = new ToggleMenuFlyoutItem
-            {
-                Text = "Answer \"Yes, proceed\" automatically — this session",
-                IsChecked = view?.AutoApprove == true,
-                IsEnabled = connected && !blocked,
-                KeyboardAcceleratorTextOverride = blocked ? "blocked on this host" : string.Empty,
-            };
-            auto.Click += OnAutoApproveClick;
-            AiMenu.Items.Add(auto);
-
-            if (view?.Profile is { } target)
-            {
-                var block = new ToggleMenuFlyoutItem
-                {
-                    Text = $"Never auto-answer on {target.Host}",
-                    IsChecked = IsAutoApproveBlocked(target.Host),
-                };
-                block.Click += (_, _) => ToggleAutoApproveBlock(target.Host);
-                AiMenu.Items.Add(block);
-            }
-        }
-
-        private bool IsAutoApproveBlocked(string host) =>
-            _layoutStore.Current.AutoApproveBlockedHosts
-                .Any(entry => string.Equals(entry, host, StringComparison.OrdinalIgnoreCase));
-
-        /// <summary>
-        /// Blocking a host is remembered; it also disarms whatever is already running, because a
-        /// rule that only applies to future sessions would not be a block.
-        /// </summary>
-        private void ToggleAutoApproveBlock(string host)
-        {
-            List<string> blocked = _layoutStore.Current.AutoApproveBlockedHosts;
-
-            if (IsAutoApproveBlocked(host))
-            {
-                blocked.RemoveAll(entry => string.Equals(entry, host, StringComparison.OrdinalIgnoreCase));
-            }
-            else
-            {
-                blocked.Add(host);
-                _surface.DisarmAutoApprove();
-            }
-
-            _layoutStore.Save();
-            UpdateStatusAutoApprove();
-        }
-
-        /// <summary>
-        /// Turns the auto-answer on or off. Only the plain "Yes" is ever chosen — never the
-        /// "and do not ask again" variant, which would surrender every later prompt as well.
-        /// </summary>
-        private void OnAutoApproveClick(object sender, RoutedEventArgs e)
-        {
-            if (sender is not ToggleMenuFlyoutItem item || _surface.ActiveView is not { } view)
-            {
-                return;
-            }
-
-            // A blocked host wins over the switch, whichever way it was just flipped.
-            bool arm = item.IsChecked
-                && view.Profile is { } profile
-                && !IsAutoApproveBlocked(profile.Host);
-
-            view.ApplyAutoApprove(arm);
-            _lastAutoApproved = string.Empty;
-            UpdateStatusAutoApprove();
-        }
-
         /// <summary>
         /// Keeps the platform a host reported, so its row in the list carries the same icon its tab
         /// does. Written only when it changed: this fires on every connect, and rewriting the file
@@ -1666,24 +1541,6 @@ namespace Claret
         }
 
         /// <summary>
-        /// Records what was answered, so the status bar can name the last prompt taken rather than
-        /// only that the automation is armed.
-        /// </summary>
-        private void OnSurfaceAutoApproved(object? sender, string option)
-        {
-            int colon = option.IndexOf(':');
-            _lastAutoApproved = colon >= 0 && colon + 1 < option.Length
-                ? option[(colon + 1)..].Trim()
-                : option.Trim();
-
-            UpdateStatusAutoApprove();
-        }
-
-        /// <summary>
-        /// The status bar carries the state of the session in front of you: an automation this
-        /// quiet has to be visible, and it is now per session, so the readout follows the tab.
-        /// </summary>
-        /// <summary>
         /// A session being recorded says so, with the file name: a log running unnoticed is how you
         /// end up with a console transcript you did not know you were keeping.
         /// </summary>
@@ -1698,76 +1555,6 @@ namespace Claret
             {
                 StatusLog.Text = text;
             }
-        }
-
-        private void UpdateStatusAutoApprove()
-        {
-            bool on = _surface.ActiveView?.AutoApprove == true;
-
-            StatusAutoApprove.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
-            StatusAutoApprove.Text = on && _lastAutoApproved.Length > 0
-                ? $"auto-yes · {_lastAutoApproved}"
-                : "auto-yes";
-        }
-
-        /// <summary>
-        /// Confirms first: this types into a live shell on someone else's machine, and the command
-        /// is worth reading before it runs.
-        /// </summary>
-        private async Task InstallAiToolAsync(AiTool tool)
-        {
-            TerminalView? view = _surface.ActiveView;
-            if (view?.State != TerminalState.Connected || view.SessionLabel.Length == 0)
-            {
-                return;
-            }
-
-            // Say where it lands: a host and account for SSH, the port for a serial console.
-            string where = view.Profile is { } profile
-                ? $"Runs on {profile.Endpoint} as {profile.Username}:"
-                : $"Runs on whatever is attached to {view.SessionLabel}:";
-
-            var body = new StackPanel { Spacing = 10 };
-            body.Children.Add(new TextBlock
-            {
-                Text = where,
-                TextWrapping = TextWrapping.Wrap,
-            });
-            body.Children.Add(new TextBlock
-            {
-                Text = tool.Script,
-                FontFamily = new FontFamily("Cascadia Mono, Consolas, monospace"),
-                FontSize = 12,
-                TextWrapping = TextWrapping.Wrap,
-                IsTextSelectionEnabled = true,
-            });
-
-            var confirm = new ContentDialog
-            {
-                Title = $"Install {tool.Name}",
-                Content = body,
-                PrimaryButtonText = "Run",
-                CloseButtonText = "Cancel",
-                DefaultButton = ContentDialogButton.Close,
-            };
-
-            if (await ShowDialogAsync(confirm) != ContentDialogResult.Primary)
-            {
-                return;
-            }
-
-            // Re-check: the dialog was open for a while and the session may have dropped.
-            if (_surface.ActiveView is { State: TerminalState.Connected } target)
-            {
-                target.SendInput(tool.Script + "\n");
-            }
-        }
-
-        private static void CopyText(string text)
-        {
-            var package = new DataPackage { RequestedOperation = DataPackageOperation.Copy };
-            package.SetText(text);
-            Clipboard.SetContent(package);
         }
 
         /// <summary>

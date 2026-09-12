@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using Claret.Models;
@@ -32,13 +31,6 @@ namespace Claret.Services
         /// what the screen looks like, and only a console being read as a record wants it.
         /// </summary>
         public bool SerialTimestamps { get; set; }
-
-        /// <summary>
-        /// Hosts where answering an AI prompt automatically is refused outright, whatever the
-        /// session asks for. Kept rather than the opposite list on purpose: the dangerous setting
-        /// is the one that should need repeating, and the safe one the one that should stick.
-        /// </summary>
-        public List<string> AutoApproveBlockedHosts { get; set; } = new();
 
         /// <summary>
         /// Line settings the serial panel opens ports with. Remembered without the port name: the

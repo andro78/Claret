@@ -126,7 +126,6 @@ namespace Claret.Controls
         private int _fontSize = 14;
         private int _scrollbackLines = WorkspaceLayout.DefaultScrollbackLines;
         private bool _copyOnSelect = true;
-        private bool _autoApprove;
 
         public TerminalView()
         {
@@ -160,9 +159,6 @@ namespace Claret.Controls
 
         /// <summary>Raised once the remote platform is known, so the tab can show its icon.</summary>
         public event EventHandler<RemotePlatform>? PlatformDetected;
-
-        /// <summary>Raised when an AI CLI prompt was answered automatically. Carries the option taken.</summary>
-        public event EventHandler<string>? AutoApproved;
 
         /// <summary>Raised for each output line carrying text a rule asked to be watched for.</summary>
         public event EventHandler<TextDetection>? TextDetected;
@@ -728,27 +724,6 @@ namespace Claret.Controls
             }
         }
 
-        /// <summary>
-        /// Whether an AI CLI approval prompt is answered "Yes" without asking, in this session
-        /// only. Deliberately per session and never persisted: arming it is a decision about the
-        /// task in front of you, not a setting the app should remember on your behalf.
-        /// </summary>
-        public bool AutoApprove => _autoApprove;
-
-        public void ApplyAutoApprove(bool enabled)
-        {
-            _autoApprove = enabled;
-            PostAutoApprove();
-        }
-
-        private void PostAutoApprove()
-        {
-            if (_webViewReady)
-            {
-                Post(_autoApprove ? "a1" : "a0");
-            }
-        }
-
         public void ChangeFontSize(int delta)
         {
             int next = Math.Clamp(_fontSize + delta, 8, 28);
@@ -836,7 +811,6 @@ namespace Claret.Controls
             PostAppearance();
             PostHighlights();
             PostCopyOnSelect();
-            PostAutoApprove();
             PostScrollback();
         }
 
@@ -903,10 +877,6 @@ namespace Claret.Controls
 
                 case 'v': // paste request
                     PasteFromClipboard();
-                    break;
-
-                case 'n': // an AI prompt was answered on our behalf; the shell shows the rest
-                    AutoApproved?.Invoke(this, body);
                     break;
 
                 case 'e': // the page reporting its own trouble

@@ -1,0 +1,60 @@
+name: Release
+
+# Cutting a release is a deliberate act, not a side effect of merging: this only fires on a
+# version tag (vX.Y.Z) pushed to the repo, never on an ordinary push to main.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Version from tag
+        id: version
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish (standalone, self-contained)
+        run: >
+          dotnet publish Claret/Claret/Claret.csproj
+          -c Release -p:Platform=x64 -p:PublishProfile=standalone-x64
+          -p:Version=${{ steps.version.outputs.version }}
+
+      - name: Install vpk
+        run: dotnet tool install -g vpk
+
+      # Pulls the previous release so this one can ship as a small delta patch instead of a full
+      # download every time. There is nothing to pull for the very first release ever published,
+      # which is exactly when this is expected to fail — vpk pack still produces a full package.
+      - name: Download previous release
+        run: vpk download github --repoUrl https://github.com/${{ github.repository }}
+        continue-on-error: true
+
+      - name: Pack
+        run: >
+          vpk pack -u Claret -v ${{ steps.version.outputs.version }} -r win-x64
+          -p Claret/Claret/Claret/bin/Publish/standalone-x64
+          -e Claret.exe
+          -i Claret/Claret/Claret/Assets/AppIcon.ico
+          --packTitle Claret --packAuthors "andro.yoon"
+
+      - name: Upload to GitHub Releases
+        run: >
+          vpk upload github --repoUrl https://github.com/${{ github.repository }}
+          --token ${{ secrets.GITHUB_TOKEN }}
+          --tag ${{ github.ref_name }}
+          --releaseName "Claret ${{ steps.version.outputs.version }}"
+          --publish

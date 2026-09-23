@@ -11,6 +11,16 @@
     <UseWinUI>true</UseWinUI>
     <WinUISDKReferences>false</WinUISDKReferences>
     <Nullable>enable</Nullable>
+
+    <!-- Bumped on each release; vpk pack and the GitHub Actions workflow both read this. -->
+    <Version>1.0.0</Version>
+
+    <!--
+      A hand-written Main (Program.cs) replaces the WinUI template's generated one, so
+      VelopackApp.Build().Run() can run before Application.Start — Velopack needs that to
+      intercept its own install/update/uninstall hooks.
+    -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
@@ -34,6 +44,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2526" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.3.1" />
+    <PackageReference Include="Velopack" Version="1.2.158" />
     <PackageReference Include="SSH.NET" Version="2026.0.0" />
     <!-- Serial consoles: the port itself, and WMI only to name it something friendlier than COM7. -->
     <PackageReference Include="System.IO.Ports" Version="10.0.11" />

@@ -31,6 +31,7 @@ namespace Claret
         Files,
         Serial,
         Tools,
+        Settings,
     }
 
     /// <summary>
@@ -210,6 +211,9 @@ namespace Claret
 
             _updater.UpdateReady += (_, _) => UpdateReadyButton.Visibility = Visibility.Visible;
             _ = CheckForUpdatesOnStartupAsync();
+
+            WireSettings();
+            ShowSettings();
 
             _profileStore.Profiles.CollectionChanged += (_, _) =>
             {
@@ -739,22 +743,9 @@ namespace Claret
         }
 
         /// <summary>
-        /// Colours are per-pane, same as font, so this reaches only the active tab — every other
-        /// open one keeps its own.
-        /// </summary>
-        private async void OnAppearanceClick(object sender, RoutedEventArgs e)
-        {
-            if (_surface.ActiveView is { } view)
-            {
-                await ApplyColorsToPaneAsync(view);
-            }
-        }
-
-        /// <summary>
         /// Opens the colour picker seeded with this one pane's current colours, and — once
-        /// confirmed — applies them to that pane (and its frame) alone. Also becomes the starting
-        /// colours for tabs opened after this one, without reaching back to change any pane that is
-        /// already open.
+        /// confirmed — applies them to that pane (and its frame) alone. The default for new tabs
+        /// is its own setting, in the Settings card.
         /// </summary>
         private async Task ApplyColorsToPaneAsync(TerminalView view)
         {
@@ -766,13 +757,6 @@ namespace Claret
 
             view.ApplyAppearance(dialog.Result);
             _surface.RefreshPaneFrame(view);
-
-            TerminalAppearance next = _appearanceStore.Current.Clone();
-            next.Background = dialog.Result.Background;
-            next.Foreground = dialog.Result.Foreground;
-            next.SchemeName = dialog.Result.SchemeName;
-            next.Ansi = dialog.Result.Ansi;
-            _appearanceStore.Save(next);
         }
 
         private void DuplicateSession(TerminalView view)
@@ -1655,40 +1639,82 @@ namespace Claret
         private void OnDetectionsClick(object sender, RoutedEventArgs e) =>
             ShowDetections(DetectionsItem.IsChecked);
 
-        private void OnCopyOnSelectClick(object sender, RoutedEventArgs e)
+        // ---------- settings card ----------
+
+        private void WireSettings()
         {
-            _layoutStore.Current.CopyOnSelect = CopyOnSelectItem.IsChecked;
-            _layoutStore.Save();
-            _surface.ApplyCopyOnSelect(_layoutStore.Current.CopyOnSelect);
+            SettingsPanel.CopyOnSelectChanged += (_, on) =>
+            {
+                _layoutStore.Current.CopyOnSelect = on;
+                _layoutStore.Save();
+                _surface.ApplyCopyOnSelect(on);
+            };
+
+            // Every pane, current and future: unlike font and colour, there is no per-pane case
+            // for wanting less history in one than another.
+            SettingsPanel.ScrollbackChanged += (_, lines) =>
+            {
+                _layoutStore.Current.ScrollbackLines = lines;
+                _layoutStore.Save();
+                _surface.ApplyScrollback(lines);
+            };
+
+            // Takes effect on the next line to arrive. What is already on screen is left as it is:
+            // restamping it would put times on lines that arrived before anyone asked for times.
+            SettingsPanel.SerialTimestampsChanged += (_, on) =>
+            {
+                _layoutStore.Current.SerialTimestamps = on;
+                _layoutStore.Save();
+                _surface.ApplySerialTimestamps(on);
+            };
+
+            SettingsPanel.FontRequested += (_, _) => _ = ChooseDefaultFontAsync();
+            SettingsPanel.ColorsRequested += (_, _) => _ = ChooseDefaultColorsAsync();
+            SettingsPanel.ChooseDownloadFolderRequested += (_, _) => _ = ChooseDownloadFolderAsync();
+            SettingsPanel.AskEachTimeRequested += (_, _) => SetDownloadFolder(string.Empty);
+            SettingsPanel.CheckUpdatesRequested += (_, _) => OnCheckForUpdatesClick(this, new RoutedEventArgs());
         }
 
-        /// <summary>
-        /// Takes effect on the next line to arrive. What is already on screen is left as it is:
-        /// restamping it would put times on lines that arrived before anyone asked for times.
-        /// </summary>
-        private void OnSerialTimestampsClick(object sender, RoutedEventArgs e)
-        {
-            _layoutStore.Current.SerialTimestamps = SerialTimestampsItem.IsChecked;
-            _layoutStore.Save();
-            _surface.ApplySerialTimestamps(_layoutStore.Current.SerialTimestamps);
-        }
+        private void ShowSettings() =>
+            SettingsPanel.Show(_layoutStore.Current, _appearanceStore.Current, AboutDialog.Version());
 
-        /// <summary>
-        /// How many lines of scrollback every pane keeps, current and future. One setting for the
-        /// whole window — unlike font and colour, there is no per-pane case for wanting less
-        /// history in one than another.
-        /// </summary>
-        private async void OnScrollbackLinesClick(object sender, RoutedEventArgs e)
+        /// <summary>The font tabs opened from now on start with. Open tabs keep their own.</summary>
+        private async Task ChooseDefaultFontAsync()
         {
-            var dialog = new ScrollbackDialog(_layoutStore.Current.ScrollbackLines);
+            var dialog = new FontDialog(_appearanceStore.Current);
             if (await ShowDialogAsync(dialog) != ContentDialogResult.Primary)
             {
                 return;
             }
 
-            _layoutStore.Current.ScrollbackLines = dialog.Lines;
-            _layoutStore.Save();
-            _surface.ApplyScrollback(dialog.Lines);
+            TerminalAppearance next = _appearanceStore.Current.Clone();
+            next.FontFamily = dialog.Family;
+            next.FontSize = dialog.Size;
+            SaveDefaultAppearance(next);
+        }
+
+        /// <summary>The colours tabs opened from now on start with. Open tabs keep their own.</summary>
+        private async Task ChooseDefaultColorsAsync()
+        {
+            var dialog = new AppearanceDialog(_appearanceStore.Current);
+            if (await ShowDialogAsync(dialog) != ContentDialogResult.Primary)
+            {
+                return;
+            }
+
+            TerminalAppearance next = _appearanceStore.Current.Clone();
+            next.Background = dialog.Result.Background;
+            next.Foreground = dialog.Result.Foreground;
+            next.SchemeName = dialog.Result.SchemeName;
+            next.Ansi = dialog.Result.Ansi;
+            SaveDefaultAppearance(next);
+        }
+
+        private void SaveDefaultAppearance(TerminalAppearance next)
+        {
+            _appearanceStore.Save(next);
+            _surface.SetDefaultAppearance(next);
+            ShowSettings();
         }
 
         /// <summary>
@@ -1705,8 +1731,8 @@ namespace Claret
 
         /// <summary>
         /// Opens the font picker seeded with this one pane's current font, and — once confirmed —
-        /// applies it to that pane alone. Also becomes the starting font for tabs opened after this
-        /// one, without reaching back to change any pane that is already open.
+        /// applies it to that pane alone. The default for new tabs is its own setting, in the
+        /// Settings card, and this never changes it behind the user's back.
         /// </summary>
         private async Task ApplyFontToPaneAsync(TerminalView view)
         {
@@ -1717,11 +1743,6 @@ namespace Claret
             }
 
             view.ApplyFont(dialog.Family, dialog.Size);
-
-            TerminalAppearance next = _appearanceStore.Current.Clone();
-            next.FontFamily = dialog.Family;
-            next.FontSize = dialog.Size;
-            _appearanceStore.Save(next);
         }
 
         // ---------- sidebar tabs ----------
@@ -1734,6 +1755,8 @@ namespace Claret
 
 
         private void OnToolsTabClick(object sender, RoutedEventArgs e) => ClickSidebarTab(SidebarTab.Tools);
+
+        private void OnSettingsTabClick(object sender, RoutedEventArgs e) => ClickSidebarTab(SidebarTab.Settings);
 
         /// <summary>
         /// The rail icons are the panel switch. A different tab shows it, the tab already showing
@@ -1773,6 +1796,7 @@ namespace Claret
             FilesCard.Visibility = Show(tab == SidebarTab.Files);
             SerialCard.Visibility = Show(tab == SidebarTab.Serial);
             ToolsCard.Visibility = Show(tab == SidebarTab.Tools);
+            SettingsCard.Visibility = Show(tab == SidebarTab.Settings);
 
             var accent = AppAccent.Brush();
             var clear = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
@@ -1783,15 +1807,21 @@ namespace Claret
             FilesTabMarker.Background = tab == SidebarTab.Files ? accent : clear;
             SerialTabMarker.Background = tab == SidebarTab.Serial ? accent : clear;
             ToolsTabMarker.Background = tab == SidebarTab.Tools ? accent : clear;
+            SettingsTabMarker.Background = tab == SidebarTab.Settings ? accent : clear;
 
             SessionsTabIcon.Foreground = tab == SidebarTab.Sessions ? bright : dim;
             FilesTabIcon.Foreground = tab == SidebarTab.Files ? bright : dim;
             SerialTabIcon.Foreground = tab == SidebarTab.Serial ? bright : dim;
             ToolsTabIcon.Foreground = tab == SidebarTab.Tools ? bright : dim;
+            SettingsTabIcon.Foreground = tab == SidebarTab.Settings ? bright : dim;
 
             if (tab == SidebarTab.Files)
             {
                 SyncFilesTab();
+            }
+            else if (tab == SidebarTab.Settings)
+            {
+                ShowSettings();
             }
         }
 
@@ -1821,34 +1851,17 @@ namespace Claret
                 : view.RemoteTitle ?? view.SessionLabel;
         }
 
-        /// <summary>
-        /// Only settings live here now, and only one of them can be read from anywhere but the
-        /// store, so this is a short list: the check mark and the folder currently in use.
-        /// </summary>
-        private void OnOptionsOpening(object sender, object e)
+        private void OnViewOpening(object sender, object e)
         {
-            CopyOnSelectItem.IsChecked = _layoutStore.Current.CopyOnSelect;
+            UpdateLayoutChrome();
             DetectionsItem.IsChecked = DetectionsHost.Visibility == Visibility.Visible;
-
-            // The preference is remembered either way; it is only greyed out to say that nothing
-            // open right now would change if it were toggled.
-            SerialTimestampsItem.IsChecked = _layoutStore.Current.SerialTimestamps;
-            SerialTimestampsItem.IsEnabled = _surface.HasSerialSession;
-
-            ScrollbackLinesItem.Text = $"Scrollback lines: {_layoutStore.Current.ScrollbackLines}";
-
-            string folder = _layoutStore.Current.DownloadFolder;
-            SftpDownloadFolderItem.Text = folder.Length > 0
-                ? $"Download folder: {folder}"
-                : "Download folder: ask each time";
-            SftpAskEachTimeItem.IsEnabled = folder.Length > 0;
         }
 
         /// <summary>
         /// Picks the folder downloads go to. Setting one skips the save dialog from then on, which is
         /// the point: repeated downloads from the same server should not need a dialog each time.
         /// </summary>
-        private async void OnSftpDownloadFolderClick(object sender, RoutedEventArgs e)
+        private async Task ChooseDownloadFolderAsync()
         {
             string? path;
             try
@@ -1874,21 +1887,19 @@ namespace Claret
                 return;
             }
 
-            if (string.IsNullOrEmpty(path))
+            if (!string.IsNullOrEmpty(path))
             {
-                return;
+                SetDownloadFolder(path);
             }
+        }
 
+        /// <summary>Empty means "show the save dialog every time".</summary>
+        private void SetDownloadFolder(string path)
+        {
             _layoutStore.Current.DownloadFolder = path;
             _layoutStore.Save();
             Files.DownloadFolder = path;
-        }
-
-        private void OnSftpAskEachTimeClick(object sender, RoutedEventArgs e)
-        {
-            _layoutStore.Current.DownloadFolder = string.Empty;
-            _layoutStore.Save();
-            Files.DownloadFolder = string.Empty;
+            ShowSettings();
         }
 
         // ---------- help ----------
@@ -2008,13 +2019,9 @@ namespace Claret
         /// <summary>Keeps the title-bar button and its radio items in step with the surface.</summary>
         private void UpdateLayoutChrome()
         {
-            int panes = _surface.PaneCount;
-            bool split = panes > 1;
-
-            // Panes nest, so there is no single orientation to report — the count is what matters.
-            // The unsplit label matches its menu item word for word, so the button reads as the
-            // menu it opens rather than as a shortened version of it.
-            LayoutLabel.Text = split ? $"Split into {panes} panes" : "Single pane (merge all)";
+            // Panes nest, so there is no single orientation to report: "split or not" is all the
+            // radio group can honestly say.
+            bool split = _surface.PaneCount > 1;
 
             LayoutSingleItem.IsChecked = !split;
             LayoutSideItem.IsChecked = false;
@@ -2024,7 +2031,6 @@ namespace Claret
             LayoutSideItem.IsEnabled = canSpread;
             LayoutStackItem.IsEnabled = canSpread;
             LayoutSingleItem.IsEnabled = split;
-            LayoutButton.IsEnabled = _surface.SessionCount > 0;
         }
 
         private void UpdateEmptyState()

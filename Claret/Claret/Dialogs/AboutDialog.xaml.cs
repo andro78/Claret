@@ -38,7 +38,7 @@ namespace Claret.Dialogs
         private void OnOpenDataFolderClick(object sender, RoutedEventArgs e) =>
             OpenDataFolderRequested?.Invoke(this, EventArgs.Empty);
 
-        private static string Version()
+        internal static string Version()
         {
             Assembly assembly = typeof(AboutDialog).Assembly;
 

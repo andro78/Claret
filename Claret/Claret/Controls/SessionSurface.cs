@@ -303,6 +303,12 @@ namespace Claret.Controls
             }
         }
 
+        /// <summary>
+        /// What tabs opened from now on start with. Open tabs are left alone: font and colours are
+        /// per tab once a tab exists.
+        /// </summary>
+        public void SetDefaultAppearance(TerminalAppearance appearance) => _appearance = appearance.Clone();
+
         /// <summary>Whether any open session is a serial console, so the chrome can say if a
         /// serial-only setting has anything to act on right now.</summary>
         public bool HasSerialSession =>

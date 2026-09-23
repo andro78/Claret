@@ -45,6 +45,7 @@ namespace Claret
         private readonly LayoutStore _layoutStore = new();
         private readonly HighlightStore _highlightStore = new();
         private readonly SerialProfileStore _serialProfileStore = new();
+        private readonly AppUpdater _updater = new();
         private readonly SessionSurface _surface = new();
         private readonly IntPtr _windowHandle;
 
@@ -204,6 +205,9 @@ namespace Claret
             UpdateProfileEmptyState();
             UpdateEmptyState();
             UpdateLayoutChrome();
+
+            _updater.UpdateReady += (_, _) => UpdateReadyButton.Visibility = Visibility.Visible;
+            _ = CheckForUpdatesOnStartupAsync();
 
             _profileStore.Profiles.CollectionChanged += (_, _) => UpdateProfileEmptyState();
             Closed += OnWindowClosed;
@@ -1894,6 +1898,53 @@ namespace Claret
             dialog.OpenDataFolderRequested += (_, _) => Open(AppPaths.DataDirectory);
 
             await ShowDialogAsync(dialog);
+        }
+
+        /// <summary>
+        /// A silent check a few seconds after launch — long enough that it never competes with
+        /// the window actually opening. Nothing is shown unless a version turns out to be waiting;
+        /// failures here (no network, nothing published yet) are exactly as uninteresting as they
+        /// would be if the user had never asked.
+        /// </summary>
+        private async Task CheckForUpdatesOnStartupAsync()
+        {
+            await Task.Delay(TimeSpan.FromSeconds(5)).ConfigureAwait(true);
+            await _updater.CheckAsync().ConfigureAwait(true);
+        }
+
+        private void OnUpdateReadyClick(object sender, RoutedEventArgs e) => _updater.ApplyAndRestart();
+
+        private async void OnCheckForUpdatesClick(object sender, RoutedEventArgs e)
+        {
+            UpdateCheckResult result = await _updater.CheckAsync();
+
+            string message = result switch
+            {
+                UpdateCheckResult.UpdateReady =>
+                    $"Version {_updater.PendingVersion} is downloaded and ready to install.",
+                UpdateCheckResult.CheckFailed =>
+                    "Could not check for updates. Check the network connection and try again.",
+                _ => _updater.IsInstalled
+                    ? "You're already on the latest version."
+                    : "Not available in this build — only the installed app can update itself.",
+            };
+
+            var dialog = new ContentDialog
+            {
+                Title = "Check for updates",
+                Content = message,
+                CloseButtonText = result == UpdateCheckResult.UpdateReady ? "Later" : "Close",
+            };
+
+            if (result == UpdateCheckResult.UpdateReady)
+            {
+                dialog.PrimaryButtonText = "Restart now";
+            }
+
+            if (await ShowDialogAsync(dialog) == ContentDialogResult.Primary)
+            {
+                _updater.ApplyAndRestart();
+            }
         }
 
         /// <summary>Keeps the title-bar button and its radio items in step with the surface.</summary>

@@ -137,6 +137,11 @@
                                 <FontIcon Glyph="&#xE8DA;" />
                             </MenuFlyoutItem.Icon>
                         </MenuFlyoutItem>
+                        <MenuFlyoutItem Text="Check for updates…" Click="OnCheckForUpdatesClick">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE895;" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
                         <MenuFlyoutItem Text="About Claret" Click="OnHelpAboutClick">
                             <MenuFlyoutItem.Icon>
                                 <FontIcon Glyph="&#xE946;" />
@@ -576,6 +581,22 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
+
+                <!-- Hidden until a downloaded update is actually waiting for a restart. -->
+                <Button x:Name="UpdateReadyButton"
+                        Grid.Column="0"
+                        Height="22"
+                        Padding="8,0"
+                        Margin="0,0,10,0"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Visibility="Collapsed"
+                        ToolTipService.ToolTip="A downloaded update is waiting — click to restart and install it"
+                        Click="OnUpdateReadyClick">
+                    <TextBlock Text="Update ready ↻"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource SystemFillColorSuccessBrush}" />
+                </Button>
 
                 <TextBlock x:Name="StatusSession"
                            Grid.Column="1"

@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="Claret.Dialogs.FileTransferDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Microsoft.UI.Xaml.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="Send file"
+    PrimaryButtonText="Send"
+    CloseButtonText="Cancel"
+    DefaultButton="Primary">
+
+    <StackPanel Spacing="12" Width="380">
+        <Grid ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="FilePathBox"
+                     Grid.Column="0"
+                     Header="File"
+                     IsReadOnly="True"
+                     PlaceholderText="Choose a file to send…" />
+            <Button x:Name="BrowseButton"
+                    Grid.Column="1"
+                    VerticalAlignment="Bottom"
+                    Content="Browse…"
+                    Click="OnBrowseClick" />
+        </Grid>
+
+        <controls:RadioButtons x:Name="ProtocolButtons"
+                               Header="Protocol"
+                               MaxColumns="3"
+                               SelectedIndex="0">
+            <RadioButton Content="Xmodem" />
+            <RadioButton Content="Ymodem" />
+            <RadioButton Content="Zmodem" />
+        </controls:RadioButtons>
+
+        <ComboBox x:Name="BaudBox"
+                  Header="Baud rate for this transfer"
+                  HorizontalAlignment="Stretch" />
+
+        <TextBlock x:Name="HintText"
+                   TextWrapping="Wrap"
+                   Style="{StaticResource CaptionTextBlockStyle}"
+                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                   Text="Start the matching receive command (rx / ry / rz) on the other end first, then Send." />
+
+        <StackPanel x:Name="ProgressPanel" Spacing="6" Visibility="Collapsed">
+            <ProgressBar x:Name="TransferProgressBar" Minimum="0" Maximum="1" Value="0" />
+            <TextBlock x:Name="ProgressText"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       Text="" />
+        </StackPanel>
+
+        <InfoBar x:Name="ErrorBar"
+                 Severity="Error"
+                 IsOpen="False"
+                 IsClosable="False"
+                 Message="" />
+
+        <InfoBar x:Name="SuccessBar"
+                 Severity="Success"
+                 IsOpen="False"
+                 IsClosable="False"
+                 Message="" />
+    </StackPanel>
+</ContentDialog>

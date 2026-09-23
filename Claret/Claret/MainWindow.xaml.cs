@@ -185,6 +185,7 @@ namespace Claret
             _surface.SaveOutputRequested += (_, view) => _ = SaveOutputAsync(view);
             _surface.FontRequested += (_, view) => _ = ApplyFontToPaneAsync(view);
             _surface.ColorsRequested += (_, view) => _ = ApplyColorsToPaneAsync(view);
+            _surface.SendFileRequested += (_, view) => _ = SendFileAsync(view);
 
             _surface.WindowCommandRequested += OnSurfaceWindowCommand;
             _surface.NewSessionRequested += (_, _) => ShowNewSessionMenu(_surface.ActiveAddAnchor);
@@ -1203,6 +1204,19 @@ namespace Claret
                     CloseButtonText = "Close",
                 });
             }
+        }
+
+        /// <summary>
+        /// Opens the send dialog and hands it the pane's own <see cref="TerminalView.SendFileAsync"/>
+        /// — the dialog runs the transfer and shows its progress, but never touches the session
+        /// directly.
+        /// </summary>
+        private async Task SendFileAsync(TerminalView view)
+        {
+            int currentBaud = view.Serial?.BaudRate ?? SerialConnection.DefaultBaudRate;
+
+            var dialog = new FileTransferDialog(_windowHandle, currentBaud, view.SendFileAsync);
+            await ShowDialogAsync(dialog);
         }
 
         /// <summary>Keeps a session label usable as a file name.</summary>

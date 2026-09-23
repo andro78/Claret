@@ -1253,6 +1253,10 @@ namespace Claret.Controls
             var breakItem = new MenuFlyoutItem { Text = "Send break" };
             breakItem.Click += (_, _) => view.SendBreak();
 
+            // X/Y/Zmodem: a board console thing, same as break — SSH already has SFTP.
+            var sendFile = new MenuFlyoutItem { Text = "Send file (Xmodem/Ymodem/Zmodem)…" };
+            sendFile.Click += (_, _) => SendFileRequested?.Invoke(this, view);
+
             menu.Items.Add(duplicate);
             menu.Items.Add(new MenuFlyoutSeparator());
             menu.Items.Add(splitRight);
@@ -1263,6 +1267,7 @@ namespace Claret.Controls
             menu.Items.Add(font);
             menu.Items.Add(colors);
             menu.Items.Add(breakItem);
+            menu.Items.Add(sendFile);
             menu.Items.Add(new MenuFlyoutSeparator());
             menu.Items.Add(close);
 
@@ -1293,6 +1298,10 @@ namespace Claret.Controls
                 {
                     entry.Visibility = view.SupportsBreak ? Visibility.Visible : Visibility.Collapsed;
                 }
+                else if (entry.Text.StartsWith("Send file", StringComparison.Ordinal))
+                {
+                    entry.Visibility = view.SupportsFileTransfer ? Visibility.Visible : Visibility.Collapsed;
+                }
             }
         }
 
@@ -1307,6 +1316,9 @@ namespace Claret.Controls
 
         /// <summary>The user asked to change just this tab's colours.</summary>
         public event EventHandler<TerminalView>? ColorsRequested;
+
+        /// <summary>The user asked to send a file over this tab's serial link.</summary>
+        public event EventHandler<TerminalView>? SendFileRequested;
 
         /// <summary>
         /// Re-reads a pane's surrounding frame colour from whichever tab is currently selected in

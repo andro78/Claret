@@ -37,6 +37,7 @@ namespace Claret.Services
         private long _bytesSent;
         private int _closedRaised;
         private bool _disposed;
+        private SerialByteChannel? _captureChannel;
 
         public SerialSession(SerialConnection settings) => _settings = settings.Clone();
 
@@ -201,6 +202,94 @@ namespace Claret.Services
             }
         }
 
+        public bool SupportsFileTransfer => true;
+
+        /// <summary>
+        /// Reads the whole file into memory (boards get flashed in megabytes, not gigabytes),
+        /// diverts the read loop's output away from the terminal for the duration, and optionally
+        /// runs the transfer at a different baud than the console is open at — restored afterward
+        /// either way, including when the transfer throws or is cancelled.
+        /// </summary>
+        public async Task SendFileAsync(
+            string path,
+            FileTransferProtocol protocol,
+            int? baudRate,
+            IProgress<FileTransferProgress> progress,
+            CancellationToken cancellationToken)
+        {
+            SerialPort? port;
+            lock (_gate)
+            {
+                port = _port;
+            }
+
+            if (port is null || !port.IsOpen)
+            {
+                throw new InvalidOperationException("The port is not open.");
+            }
+
+            byte[] data = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
+            string fileName = Path.GetFileName(path);
+
+            int originalBaud = port.BaudRate;
+            bool changedBaud = baudRate is { } requested && requested != originalBaud;
+
+            var capture = new SerialByteChannel();
+            lock (_gate)
+            {
+                _captureChannel = capture;
+            }
+
+            try
+            {
+                if (changedBaud)
+                {
+                    port.BaudRate = baudRate!.Value;
+                }
+
+                capture.Drain();
+                var io = new TransferIo(Send, capture.ReadByteAsync);
+
+                switch (protocol)
+                {
+                    case FileTransferProtocol.Xmodem:
+                        await XmodemSender.SendAsync(io, data, progress, cancellationToken).ConfigureAwait(false);
+                        break;
+                    case FileTransferProtocol.Ymodem:
+                        await YmodemSender.SendAsync(io, fileName, data, progress, cancellationToken)
+                            .ConfigureAwait(false);
+                        break;
+                    case FileTransferProtocol.Zmodem:
+                        await ZmodemSender.SendAsync(io, fileName, data, progress, cancellationToken)
+                            .ConfigureAwait(false);
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(protocol), protocol, null);
+                }
+            }
+            finally
+            {
+                lock (_gate)
+                {
+                    _captureChannel = null;
+                }
+
+                if (changedBaud)
+                {
+                    try
+                    {
+                        port.BaudRate = originalBaud;
+                    }
+                    catch (Exception ex) when (ex is IOException or InvalidOperationException
+                                                  or UnauthorizedAccessException)
+                    {
+                        // The port is already in trouble if this throws; the transfer's own
+                        // exception (or success) is what matters to the caller.
+                    }
+                }
+            }
+        }
+
         private void ReadLoop()
         {
             byte[] buffer = new byte[ReadBufferSize];
@@ -231,7 +320,23 @@ namespace Claret.Services
 
                     byte[] chunk = new byte[read];
                     Buffer.BlockCopy(buffer, 0, chunk, 0, read);
-                    OutputReceived?.Invoke(this, chunk);
+
+                    SerialByteChannel? capture;
+                    lock (_gate)
+                    {
+                        capture = _captureChannel;
+                    }
+
+                    if (capture is not null)
+                    {
+                        // A file transfer owns the line: its bytes are protocol data, not
+                        // something the terminal should ever try to render.
+                        capture.Push(chunk);
+                    }
+                    else
+                    {
+                        OutputReceived?.Invoke(this, chunk);
+                    }
                 }
             }
             catch (Exception ex) when (ex is IOException or InvalidOperationException

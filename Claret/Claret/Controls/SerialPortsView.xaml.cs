@@ -60,6 +60,8 @@ namespace Claret.Controls
         private readonly HashSet<string> _open = new(StringComparer.OrdinalIgnoreCase);
 
         private bool _loading;
+        private SerialDeviceWatcher? _deviceWatcher;
+        private IntPtr _windowHandle;
 
         public SerialPortsView()
         {
@@ -84,6 +86,30 @@ namespace Claret.Controls
 
             PortList.ItemsSource = _ports;
             _loading = false;
+
+            Unloaded += (_, _) => _deviceWatcher?.Dispose();
+        }
+
+        /// <summary>
+        /// Set once, after construction, so the panel can ask Windows for a nudge the instant a COM
+        /// port interface arrives or leaves — no timer, no polling. Windows already knows the
+        /// moment this happens; <see cref="SerialDeviceWatcher"/> just asks to be told directly.
+        /// </summary>
+        public IntPtr WindowHandle
+        {
+            get => _windowHandle;
+            set
+            {
+                _windowHandle = value;
+                _deviceWatcher?.Dispose();
+                _deviceWatcher = null;
+
+                if (value != IntPtr.Zero)
+                {
+                    _deviceWatcher = new SerialDeviceWatcher(value);
+                    _deviceWatcher.DevicesChanged += async (_, _) => await RefreshAsync(onlyIfChanged: true);
+                }
+            }
         }
 
         /// <summary>Raised when the user asks to open a port with the settings shown.</summary>
@@ -171,13 +197,20 @@ namespace Claret.Controls
 
         /// <summary>
         /// Rescans. Keeps the selection if that port is still there, which matters when an adapter
-        /// is replugged while the panel is open.
+        /// is replugged while the panel is open. <paramref name="onlyIfChanged"/> skips touching
+        /// the list at all when the scan comes back identical — the auto-refresh timer calls this
+        /// every couple of seconds, and rebuilding an unchanged list would flicker it for nothing.
         /// </summary>
-        public async Task RefreshAsync()
+        public async Task RefreshAsync(bool onlyIfChanged = false)
         {
-            string? selected = (PortList.SelectedItem as SerialPortItem)?.PortName;
-
             IReadOnlyList<SerialPortInfo> found = await Task.Run(SerialPortScanner.Scan).ConfigureAwait(true);
+
+            if (onlyIfChanged && SameAsShown(found))
+            {
+                return;
+            }
+
+            string? selected = (PortList.SelectedItem as SerialPortItem)?.PortName;
 
             _ports.Clear();
             foreach (SerialPortInfo port in found)
@@ -193,6 +226,25 @@ namespace Claret.Controls
                 string.Equals(item.PortName, selected, StringComparison.OrdinalIgnoreCase));
 
             PortList.SelectedItem = again ?? _ports.FirstOrDefault();
+        }
+
+        private bool SameAsShown(IReadOnlyList<SerialPortInfo> found)
+        {
+            if (found.Count != _ports.Count)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < found.Count; i++)
+            {
+                if (!string.Equals(found[i].PortName, _ports[i].PortName, StringComparison.OrdinalIgnoreCase)
+                    || found[i].Detail != _ports[i].Detail)
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         /// <summary>

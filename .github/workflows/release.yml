@@ -46,9 +46,9 @@ jobs:
       - name: Pack
         run: >
           vpk pack -u Claret -v ${{ steps.version.outputs.version }} -r win-x64
-          -p Claret/Claret/Claret/bin/Publish/standalone-x64
+          -p Claret/Claret/bin/Publish/standalone-x64
           -e Claret.exe
-          -i Claret/Claret/Claret/Assets/AppIcon.ico
+          -i Claret/Claret/Assets/AppIcon.ico
           --packTitle Claret --packAuthors "andro.yoon"
 
       - name: Upload to GitHub Releases

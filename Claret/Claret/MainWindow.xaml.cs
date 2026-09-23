@@ -139,6 +139,7 @@ namespace Claret
             SurfaceHost.Children.Add(_surface);
             Files.WindowHandle = _windowHandle;
             Files.DownloadFolder = _layoutStore.Current.DownloadFolder;
+            Serial.WindowHandle = _windowHandle;
             // Nothing is connected yet, so this only records the preference; the first listing reads it.
             _ = Files.SetShowFilesAsync(_layoutStore.Current.ShowRemoteFiles);
             _surface.SessionClosing += (_, view) =>

@@ -197,6 +197,7 @@ namespace Claret.Controls
             view.Shutdown();
             Prune();
             ActiveSessionChanged?.Invoke(this, EventArgs.Empty);
+            SessionsChanged?.Invoke(this, EventArgs.Empty);
 
             if (SessionCount == 0)
             {
@@ -1396,9 +1397,21 @@ namespace Claret.Controls
             }
         }
 
+        /// <summary>Raised when any session connects, drops, or closes — anything that changes <see cref="ConnectedProfileIds"/>.</summary>
+        public event EventHandler? SessionsChanged;
+
+        /// <summary>Ids of the saved profiles that have a connected tab right now.</summary>
+        public IReadOnlyCollection<string> ConnectedProfileIds() =>
+            Leaves()
+                .SelectMany(leaf => leaf.Group.Sessions)
+                .Where(view => view.State == TerminalState.Connected && view.Profile is not null)
+                .Select(view => view.Profile!.Id)
+                .ToHashSet();
+
         private void OnSessionStateChanged(object? sender, TerminalState state)
         {
             RefreshChrome();
+            SessionsChanged?.Invoke(this, EventArgs.Empty);
 
             if (sender is TerminalView view && ReferenceEquals(view, ActiveView))
             {

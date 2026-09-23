@@ -71,9 +71,44 @@ namespace Claret.Models
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
+        private bool _isOpen;
+
+        /// <summary>Whether a tab is connected to this profile right now. Never saved.</summary>
+        [JsonIgnore]
+        public bool IsOpen
+        {
+            get => _isOpen;
+            set
+            {
+                if (_isOpen == value)
+                {
+                    return;
+                }
+
+                _isOpen = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsOpen)));
+            }
+        }
+
         [JsonIgnore]
         public string DisplayName =>
             string.IsNullOrWhiteSpace(Name) ? Endpoint : Name;
+
+        // A name that just repeats the host (the connection dialog's default) is not a name.
+        private bool HasOwnName =>
+            !string.IsNullOrWhiteSpace(Name)
+            && !string.Equals(Name.Trim(), Host, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(Name.Trim(), Endpoint, StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>First line of the profile list: the name, or the host when there is none.</summary>
+        [JsonIgnore]
+        public string ListTitle => HasOwnName ? Name.Trim() : Host;
+
+        /// <summary>Second line: whatever the first line left out, never a repeat of it.</summary>
+        [JsonIgnore]
+        public string ListSubtitle => HasOwnName
+            ? Endpoint
+            : Port == 22 ? Username : $"{Username} · port {Port}";
 
         [JsonIgnore]
         public string Endpoint =>

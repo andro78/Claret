@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
@@ -210,7 +211,13 @@ namespace Claret
             _updater.UpdateReady += (_, _) => UpdateReadyButton.Visibility = Visibility.Visible;
             _ = CheckForUpdatesOnStartupAsync();
 
-            _profileStore.Profiles.CollectionChanged += (_, _) => UpdateProfileEmptyState();
+            _profileStore.Profiles.CollectionChanged += (_, _) =>
+            {
+                UpdateProfileEmptyState();
+                ApplyProfileFilter();
+                UpdateOpenProfiles();
+            };
+            _surface.SessionsChanged += (_, _) => UpdateOpenProfiles();
             Closed += OnWindowClosed;
 
             if (_profileStore.LoadError is not null)
@@ -501,6 +508,43 @@ namespace Claret
             NoProfilesText.Visibility = _profileStore.Profiles.Count == 0
                 ? Visibility.Visible
                 : Visibility.Collapsed;
+        }
+
+        private void OnProfileSearchChanged(object sender, TextChangedEventArgs e) => ApplyProfileFilter();
+
+        /// <summary>
+        /// Narrows the list to profiles whose name, host, or user contains the query. An empty
+        /// query hands the list back its live collection, so adds and removes show up as before.
+        /// </summary>
+        private void ApplyProfileFilter()
+        {
+            string query = ProfileSearchBox.Text.Trim();
+            if (query.Length == 0)
+            {
+                if (!ReferenceEquals(ProfileList.ItemsSource, _profileStore.Profiles))
+                {
+                    ProfileList.ItemsSource = _profileStore.Profiles;
+                }
+
+                return;
+            }
+
+            ProfileList.ItemsSource = _profileStore.Profiles
+                .Where(profile =>
+                    profile.Name.Contains(query, StringComparison.OrdinalIgnoreCase)
+                    || profile.Host.Contains(query, StringComparison.OrdinalIgnoreCase)
+                    || profile.Username.Contains(query, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+
+        /// <summary>Lights the green dot on every profile that has a connected tab.</summary>
+        private void UpdateOpenProfiles()
+        {
+            IReadOnlyCollection<string> open = _surface.ConnectedProfileIds();
+            foreach (ConnectionProfile profile in _profileStore.Profiles)
+            {
+                profile.IsOpen = open.Contains(profile.Id);
+            }
         }
 
         private void OnProfileDoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
@@ -1892,6 +1936,19 @@ namespace Claret
 
         private async void OnHelpShortcutsClick(object sender, RoutedEventArgs e) =>
             await ShowDialogAsync(new ShortcutsDialog());
+
+        /// <summary>
+        /// Opens a title-bar menu aligned to its button's left edge. DropDownButton's own flyout
+        /// centres under the button whatever Placement says, and these buttons sit so close to the
+        /// window's left edge that a centred menu hangs off it — check marks and all.
+        /// </summary>
+        private void OnTitleMenuClick(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement button && FlyoutBase.GetAttachedFlyout(button) is { } menu)
+            {
+                menu.ShowAt(button, new FlyoutShowOptions { Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft });
+            }
+        }
 
         private async void OnHelpAboutClick(object sender, RoutedEventArgs e)
         {

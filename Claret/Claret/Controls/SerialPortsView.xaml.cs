@@ -282,12 +282,12 @@ namespace Claret.Controls
             OpenButton.IsEnabled = selected is not null;
             PinButton.IsEnabled = selected is not null;
 
-            // Enabled on any selected port, open or not: reconnecting a closed one just opens it,
-            // and the button meaning the same thing in both states is one less rule to learn.
-            ReconnectButton.IsEnabled = selected is not null;
+            ReconnectButton.Visibility = selected is not null && _open.Contains(selected.PortName)
+                ? Visibility.Visible
+                : Visibility.Collapsed;
             ToolTipService.SetToolTip(
                 ReconnectButton,
-                selected is null ? null : $"Reconnect {selected.PortName}");
+                selected is null ? null : $"Close and reopen {selected.PortName} in the same tab");
 
             if (selected is null)
             {

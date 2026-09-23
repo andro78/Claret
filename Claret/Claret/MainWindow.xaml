@@ -51,18 +51,19 @@
                             Margin="2,0,0,0"
                             Background="Transparent"
                             BorderThickness="0"
-                            ToolTipService.ToolTip="Options">
+                            ToolTipService.ToolTip="Options"
+                            Click="OnTitleMenuClick">
                 <TextBlock Text="Options"
                            VerticalAlignment="Center"
                            Style="{StaticResource CaptionTextBlockStyle}" />
-                <DropDownButton.Flyout>
+                <FlyoutBase.AttachedFlyout>
                     <!--
                         Settings only. Everything that acts on the file tree — uploading,
                         downloading, refreshing — lives in the Files panel, next to the tree it acts
                         on; a menu at the top of the window is the wrong place to reach for it.
                         What is left is where downloads land, and one terminal preference.
                     -->
-                    <MenuFlyout Placement="Bottom" Opening="OnOptionsOpening">
+                    <MenuFlyout Opening="OnOptionsOpening">
                         <!-- Mouse selection straight to the clipboard; paste is middle-click or Ctrl+V. -->
                         <ToggleMenuFlyoutItem x:Name="CopyOnSelectItem"
                                               Text="Copy on selection"
@@ -105,7 +106,7 @@
                                             Click="OnSftpAskEachTimeClick" />
                         </MenuFlyoutSubItem>
                     </MenuFlyout>
-                </DropDownButton.Flyout>
+                </FlyoutBase.AttachedFlyout>
             </DropDownButton>
 
             <DropDownButton x:Name="HelpButton"
@@ -115,12 +116,13 @@
                             Margin="2,0,0,0"
                             Background="Transparent"
                             BorderThickness="0"
-                            ToolTipService.ToolTip="Help">
+                            ToolTipService.ToolTip="Help"
+                            Click="OnTitleMenuClick">
                 <TextBlock Text="Help"
                            VerticalAlignment="Center"
                            Style="{StaticResource CaptionTextBlockStyle}" />
-                <DropDownButton.Flyout>
-                    <MenuFlyout Placement="Bottom">
+                <FlyoutBase.AttachedFlyout>
+                    <MenuFlyout>
                         <MenuFlyoutItem Text="Manual" Click="OnHelpManualClick">
                             <MenuFlyoutItem.Icon>
                                 <FontIcon Glyph="&#xE8A5;" />
@@ -148,7 +150,7 @@
                             </MenuFlyoutItem.Icon>
                         </MenuFlyoutItem>
                     </MenuFlyout>
-                </DropDownButton.Flyout>
+                </FlyoutBase.AttachedFlyout>
             </DropDownButton>
 
             <!--
@@ -306,7 +308,7 @@
                                 Padding="0"
                                 Background="Transparent"
                                 BorderThickness="0"
-                                ToolTipService.ToolTip="Tools"
+                                ToolTipService.ToolTip="Highlights"
                                 Click="OnToolsTabClick">
                             <Grid Width="34" Height="36">
                                 <Border x:Name="ToolsTabMarker"
@@ -315,7 +317,7 @@
                                         CornerRadius="2"
                                         HorizontalAlignment="Left"
                                         VerticalAlignment="Center" />
-                                <FontIcon x:Name="ToolsTabIcon" Glyph="&#xE90F;" FontSize="16" />
+                                <FontIcon x:Name="ToolsTabIcon" Glyph="&#xE7E6;" FontSize="16" />
                             </Grid>
                         </Button>
                             </StackPanel>
@@ -357,12 +359,20 @@
                     </Border.Shadow>
                     <Grid>
                         <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
+                        <!-- Matches name, host, and user as you type. -->
+                        <TextBox x:Name="ProfileSearchBox"
+                                 Grid.Row="0"
+                                 Margin="8,8,8,2"
+                                 PlaceholderText="Search connections"
+                                 TextChanged="OnProfileSearchChanged" />
+
                         <ListView x:Name="ProfileList"
-                                  Grid.Row="0"
+                                  Grid.Row="1"
                                   Margin="2"
                                   SelectionMode="Single"
                                   DoubleTapped="OnProfileDoubleTapped"
@@ -393,18 +403,28 @@
                                                 run down, and after the first connection it also
                                                 says something true about the far end.
                                             -->
-                                            <IconSourceElement Grid.Column="0"
-                                                               Width="22"
-                                                               Height="22"
-                                                               VerticalAlignment="Center"
-                                                               IconSource="{x:Bind local2:PlatformIcon.ListIcon(LastOs), Mode=OneWay}" />
+                                            <Grid Grid.Column="0" VerticalAlignment="Center">
+                                                <IconSourceElement Width="22"
+                                                                   Height="22"
+                                                                   IconSource="{x:Bind local2:PlatformIcon.ListIcon(LastOs), Mode=OneWay}" />
+                                                <!-- Connected right now: a tab is live on this profile. -->
+                                                <Ellipse Width="9"
+                                                         Height="9"
+                                                         Margin="0,0,-3,-3"
+                                                         HorizontalAlignment="Right"
+                                                         VerticalAlignment="Bottom"
+                                                         Fill="{ThemeResource SystemFillColorSuccessBrush}"
+                                                         Stroke="{ThemeResource LayerFillColorDefaultBrush}"
+                                                         StrokeThickness="1.5"
+                                                         Visibility="{x:Bind IsOpen, Mode=OneWay}" />
+                                            </Grid>
 
                                             <StackPanel Grid.Column="1" Spacing="2">
-                                                <TextBlock Text="{x:Bind DisplayName}"
+                                                <TextBlock Text="{x:Bind ListTitle}"
                                                            FontWeight="SemiBold"
                                                            TextWrapping="NoWrap"
                                                            TextTrimming="CharacterEllipsis" />
-                                                <TextBlock Text="{x:Bind Endpoint}"
+                                                <TextBlock Text="{x:Bind ListSubtitle}"
                                                            Style="{StaticResource CaptionTextBlockStyle}"
                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                                            TextWrapping="NoWrap"
@@ -438,7 +458,7 @@
                         </ListView>
 
                         <TextBlock x:Name="NoProfilesText"
-                                   Grid.Row="0"
+                                   Grid.Row="1"
                                    Margin="16"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center"
@@ -448,7 +468,7 @@
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    Text="No saved connections.&#x0a;Tick 'Save to profile list' when you connect." />
                         <!-- Inside the card: the action belongs to the list it acts on -->
-                        <Border Grid.Row="1"
+                        <Border Grid.Row="2"
                                 Padding="6"
                                 BorderThickness="0,1,0,0"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">

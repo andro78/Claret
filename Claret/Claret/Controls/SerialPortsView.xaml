@@ -99,7 +99,7 @@
                     Padding="0"
                     Background="Transparent"
                     BorderThickness="0"
-                    ToolTipService.ToolTip="Rescan"
+                    ToolTipService.ToolTip="Rescan ports (also happens by itself when an adapter is plugged in or pulled)"
                     Click="OnRefreshClick">
                 <FontIcon Glyph="&#xE72C;" FontSize="13" />
             </Button>
@@ -214,12 +214,16 @@
                 an adapter that was replugged leaves a connection that looks alive and carries
                 nothing, and building it again is the only way to find out.
             -->
+            <!--
+                Text, not an icon: the Rescan arrow at the top of the panel would look the same.
+                Shown only while the port is open — on a closed port it would just be Open again,
+                and a tab left on "Session ended" has its own Retry.
+            -->
             <Button x:Name="ReconnectButton"
                     Grid.Column="1"
-                    IsEnabled="False"
-                    Click="OnReconnectClick">
-                <FontIcon Glyph="&#xE895;" FontSize="13" />
-            </Button>
+                    Visibility="Collapsed"
+                    Content="Reconnect"
+                    Click="OnReconnectClick" />
         </Grid>
     </Grid>
 </UserControl>

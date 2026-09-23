@@ -249,6 +249,17 @@ namespace Claret.Services
         {
         }
 
+        /// <summary>An SSH shell has SFTP for moving files; a modem protocol has no channel of its own here.</summary>
+        public bool SupportsFileTransfer => false;
+
+        public Task SendFileAsync(
+            string path,
+            FileTransferProtocol protocol,
+            int? baudRate,
+            IProgress<FileTransferProgress> progress,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException("File transfer protocols run over a serial console, not SSH.");
+
         public void Resize(uint columns, uint rows)
         {
             if (columns == 0 || rows == 0)

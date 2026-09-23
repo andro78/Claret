@@ -51,5 +51,25 @@ namespace Claret.Services
         /// the boot loader or a kernel debugger, so it is never sent by accident.
         /// </summary>
         void SendBreak();
+
+        /// <summary>
+        /// Whether this link can carry a raw X/Y/Zmodem transfer — a serial thing. An SSH shell has
+        /// SFTP for moving files, and layering a modem protocol over its PTY would fight the same
+        /// channel the shell prompt is using.
+        /// </summary>
+        bool SupportsFileTransfer { get; }
+
+        /// <summary>
+        /// Sends <paramref name="path"/> using <paramref name="protocol"/>, taking over the raw byte
+        /// stream for as long as it runs. <paramref name="baudRate"/>, when given, is applied for the
+        /// transfer only and restored afterward — a board's bootloader often wants a different rate
+        /// than the console it was dropped into.
+        /// </summary>
+        Task SendFileAsync(
+            string path,
+            FileTransferProtocol protocol,
+            int? baudRate,
+            IProgress<FileTransferProgress> progress,
+            CancellationToken cancellationToken);
     }
 }

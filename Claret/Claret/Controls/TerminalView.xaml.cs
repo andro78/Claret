@@ -205,6 +205,25 @@ namespace Claret.Controls
         /// </summary>
         public void SendBreak() => _session?.SendBreak();
 
+        /// <summary>Whether an X/Y/Zmodem send can run on this link — serial only.</summary>
+        public bool SupportsFileTransfer => _session?.SupportsFileTransfer == true;
+
+        /// <summary>Sends a file over the link's own session; throws if it has none open, or none capable of it.</summary>
+        public Task SendFileAsync(
+            string path,
+            FileTransferProtocol protocol,
+            int? baudRate,
+            IProgress<FileTransferProgress> progress,
+            CancellationToken cancellationToken)
+        {
+            if (_session is not { } session)
+            {
+                throw new InvalidOperationException("No session is open.");
+            }
+
+            return session.SendFileAsync(path, protocol, baudRate, progress, cancellationToken);
+        }
+
         /// <summary>
         /// Starts recording what the session prints. Output already on screen is not in the file:
         /// a log begins when you ask for one, and saying otherwise would be a lie about the record.

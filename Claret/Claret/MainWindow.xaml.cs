@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.NetworkInformation;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -183,6 +184,7 @@ namespace Claret
             Detections.CloseRequested += (_, _) => ShowDetections(false);
             _surface.LogRequested += (_, view) => _ = ToggleSessionLogAsync(view);
             _surface.SaveOutputRequested += (_, view) => _ = SaveOutputAsync(view);
+            _surface.YmodemRequested += (_, view) => _ = SendYmodemAsync(view);
             _surface.FontRequested += (_, view) => _ = ApplyFontToPaneAsync(view);
             _surface.ColorsRequested += (_, view) => _ = ApplyColorsToPaneAsync(view);
 
@@ -1140,6 +1142,129 @@ namespace Claret
             }
 
             UpdateStatusLog();
+        }
+
+        /// <summary>Sends one local file through the selected serial console.</summary>
+        private async Task SendYmodemAsync(TerminalView view)
+        {
+            if (_dialogOpen || !view.CanSendYmodem)
+                return;
+
+            StorageFile? file;
+            try
+            {
+                var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.DocumentsLibrary };
+                picker.FileTypeFilter.Add("*");
+                WinRT.Interop.InitializeWithWindow.Initialize(picker, _windowHandle);
+                file = await picker.PickSingleFileAsync();
+            }
+            catch (Exception ex)
+            {
+                await ShowDialogAsync(new ContentDialog
+                {
+                    Title = "YMODEM transfer",
+                    Content = $"Cannot open the file picker: {ex.Message}",
+                    CloseButtonText = "Close",
+                });
+                return;
+            }
+            if (file is null || !view.CanSendYmodem || _dialogOpen)
+                return;
+
+            int currentBaudRate = view.Serial!.BaudRate;
+            var speedBox = new ComboBox
+            {
+                Header = "Transfer speed",
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+            };
+            foreach (int rate in SerialConnection.CommonBaudRates.Append(currentBaudRate).Distinct().OrderBy(rate => rate))
+            {
+                var option = new ComboBoxItem { Content = $"{rate:N0} bps", Tag = rate };
+                speedBox.Items.Add(option);
+                if (rate == currentBaudRate)
+                    speedBox.SelectedItem = option;
+            }
+            var speedContent = new StackPanel { Spacing = 12 };
+            speedContent.Children.Add(new TextBlock
+            {
+                Text = "Set the receiver to the same speed before starting the transfer.",
+                TextWrapping = TextWrapping.Wrap,
+            });
+            speedContent.Children.Add(speedBox);
+            if (await ShowDialogAsync(new ContentDialog
+            {
+                Title = "YMODEM transfer speed",
+                Content = speedContent,
+                PrimaryButtonText = "Send",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Primary,
+            }) != ContentDialogResult.Primary)
+                return;
+            int transferBaudRate = (int)((ComboBoxItem)speedBox.SelectedItem).Tag;
+            if (!view.CanSendYmodem)
+                return;
+
+            long length;
+            try { length = new FileInfo(file.Path).Length; }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                await ShowDialogAsync(new ContentDialog
+                {
+                    Title = "YMODEM transfer",
+                    Content = $"Cannot read {file.Name}: {ex.Message}",
+                    CloseButtonText = "Close",
+                });
+                return;
+            }
+            var status = new TextBlock { Text = $"Waiting for the receiver at {transferBaudRate:N0} bps to send C…" };
+            var bar = new ProgressBar { Minimum = 0, Maximum = Math.Max(1, length), IsIndeterminate = true };
+            var content = new StackPanel { Spacing = 12 };
+            content.Children.Add(new TextBlock { Text = file.Name });
+            content.Children.Add(status);
+            content.Children.Add(bar);
+            var dialog = new ContentDialog
+            {
+                Title = "YMODEM transfer",
+                Content = content,
+                CloseButtonText = "Cancel",
+            };
+            using var cts = new CancellationTokenSource();
+            dialog.CloseButtonClick += (_, _) => cts.Cancel();
+            var shown = ShowDialogAsync(dialog);
+            var progress = new Progress<long>(bytes =>
+            {
+                bar.IsIndeterminate = false;
+                bar.Value = bytes;
+                status.Text = $"{bytes:N0} / {bar.Maximum:N0} bytes";
+            });
+
+            Exception? failure = null;
+            try
+            {
+                await Task.Run(() => view.SendYmodemAsync(file.Path, transferBaudRate, progress, cts.Token));
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex) { failure = ex; }
+            dialog.Hide();
+            await shown;
+            if (failure is not null)
+            {
+                await ShowDialogAsync(new ContentDialog
+                {
+                    Title = "YMODEM transfer failed",
+                    Content = failure.Message,
+                    CloseButtonText = "Close",
+                });
+            }
+            else if (!cts.IsCancellationRequested)
+            {
+                await ShowDialogAsync(new ContentDialog
+                {
+                    Title = "YMODEM transfer complete",
+                    Content = file.Name,
+                    CloseButtonText = "Close",
+                });
+            }
         }
 
         /// <summary>

@@ -15,6 +15,7 @@ namespace Claret.Models
         public static readonly int[] CommonBaudRates =
         {
             9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600,
+            1000000, 1500000, 2000000,
         };
 
         public string PortName { get; set; } = string.Empty;

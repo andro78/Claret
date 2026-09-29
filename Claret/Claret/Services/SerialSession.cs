@@ -3,6 +3,7 @@ using System.IO;
 using System.IO.Ports;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Threading.Channels;
 using Claret.Models;
 
 namespace Claret.Services
@@ -37,6 +38,7 @@ namespace Claret.Services
         private long _bytesSent;
         private int _closedRaised;
         private bool _disposed;
+        private Channel<byte>? _transferInput;
 
         public SerialSession(SerialConnection settings) => _settings = settings.Clone();
 
@@ -143,6 +145,8 @@ namespace Claret.Services
             SerialPort? port;
             lock (_gate)
             {
+                if (_transferInput is not null)
+                    return; // Keystrokes must not corrupt an active transfer.
                 port = _port;
             }
 
@@ -160,6 +164,55 @@ namespace Claret.Services
                                           or UnauthorizedAccessException)
             {
                 RaiseClosed($"write failed: {ex.Message}");
+            }
+        }
+
+        public async Task SendYmodemAsync(string path, int baudRate, IProgress<long>? progress, CancellationToken cancellationToken)
+        {
+            if (baudRate <= 0)
+                throw new ArgumentOutOfRangeException(nameof(baudRate));
+
+            Channel<byte> input;
+            SerialPort port;
+            lock (_gate)
+            {
+                if (_transferInput is not null)
+                    throw new InvalidOperationException("A file transfer is already running on this port.");
+                port = _port is { IsOpen: true } open ? open
+                    : throw new IOException("The serial port is disconnected.");
+                input = Channel.CreateUnbounded<byte>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
+                _transferInput = input;
+            }
+
+            int originalBaudRate = _settings.BaudRate;
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (baudRate != originalBaudRate)
+                    port.BaudRate = baudRate;
+                await YmodemSender.SendAsync(path, input.Reader,
+                    packet =>
+                    {
+                        port.Write(packet, 0, packet.Length);
+                        Interlocked.Add(ref _bytesSent, packet.Length);
+                    }, progress, cancellationToken);
+            }
+            finally
+            {
+                try
+                {
+                    if (port.IsOpen && port.BaudRate != originalBaudRate)
+                        port.BaudRate = originalBaudRate;
+                }
+                finally
+                {
+                    lock (_gate)
+                    {
+                        if (ReferenceEquals(_transferInput, input))
+                            _transferInput = null;
+                    }
+                    input.Writer.TryComplete();
+                }
             }
         }
 
@@ -229,6 +282,18 @@ namespace Claret.Services
 
                     Interlocked.Add(ref _bytesReceived, read);
 
+                    Channel<byte>? transfer;
+                    lock (_gate)
+                    {
+                        transfer = _transferInput;
+                    }
+                    if (transfer is not null)
+                    {
+                        for (int i = 0; i < read; i++)
+                            transfer.Writer.TryWrite(buffer[i]);
+                        continue;
+                    }
+
                     byte[] chunk = new byte[read];
                     Buffer.BlockCopy(buffer, 0, chunk, 0, read);
                     OutputReceived?.Invoke(this, chunk);
@@ -248,6 +313,10 @@ namespace Claret.Services
         {
             if (Interlocked.Exchange(ref _closedRaised, 1) == 0)
             {
+                lock (_gate)
+                {
+                    _transferInput?.Writer.TryComplete(new IOException(reason ?? "The serial port was closed."));
+                }
                 Closed?.Invoke(this, reason);
             }
         }
@@ -266,6 +335,7 @@ namespace Claret.Services
             {
                 port = _port;
                 _port = null;
+                _transferInput?.Writer.TryComplete(new IOException("The serial port was closed."));
             }
 
             try

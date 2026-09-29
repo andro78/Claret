@@ -1253,6 +1253,9 @@ namespace Claret.Controls
             var breakItem = new MenuFlyoutItem { Text = "Send break" };
             breakItem.Click += (_, _) => view.SendBreak();
 
+            var ymodem = new MenuFlyoutItem { Text = "Send file with YMODEM…" };
+            ymodem.Click += (_, _) => YmodemRequested?.Invoke(this, view);
+
             menu.Items.Add(duplicate);
             menu.Items.Add(new MenuFlyoutSeparator());
             menu.Items.Add(splitRight);
@@ -1262,6 +1265,7 @@ namespace Claret.Controls
             menu.Items.Add(saveOutput);
             menu.Items.Add(font);
             menu.Items.Add(colors);
+            menu.Items.Add(ymodem);
             menu.Items.Add(breakItem);
             menu.Items.Add(new MenuFlyoutSeparator());
             menu.Items.Add(close);
@@ -1293,6 +1297,11 @@ namespace Claret.Controls
                 {
                     entry.Visibility = view.SupportsBreak ? Visibility.Visible : Visibility.Collapsed;
                 }
+                else if (entry.Text == "Send file with YMODEM…")
+                {
+                    entry.Visibility = view.Serial is not null ? Visibility.Visible : Visibility.Collapsed;
+                    entry.IsEnabled = view.CanSendYmodem;
+                }
             }
         }
 
@@ -1301,6 +1310,8 @@ namespace Claret.Controls
 
         /// <summary>The user asked to save this tab's current buffer to a file, once, right now.</summary>
         public event EventHandler<TerminalView>? SaveOutputRequested;
+
+        public event EventHandler<TerminalView>? YmodemRequested;
 
         /// <summary>The user asked to change just this tab's font.</summary>
         public event EventHandler<TerminalView>? FontRequested;

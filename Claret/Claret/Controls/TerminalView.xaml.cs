@@ -196,6 +196,13 @@ namespace Claret.Controls
         /// <summary>Whether a break can be sent on this link — serial only.</summary>
         public bool SupportsBreak => _session?.SupportsBreak == true;
 
+        public bool CanSendYmodem => _session is SerialSession { IsConnected: true };
+
+        public Task SendYmodemAsync(string path, int baudRate, IProgress<long>? progress, CancellationToken cancellationToken) =>
+            _session is SerialSession serial && serial.IsConnected
+                ? serial.SendYmodemAsync(path, baudRate, progress, cancellationToken)
+                : Task.FromException(new InvalidOperationException("The serial port is disconnected."));
+
         /// <summary>The file this session is being recorded to, or null when it is not.</summary>
         public string? LogPath => _log?.Path;
 

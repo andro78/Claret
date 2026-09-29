@@ -22,6 +22,8 @@ namespace Claret.Services
             }
         }
 
+        public void Complete() => _channel.Writer.TryComplete();
+
         /// <summary>Reads one byte, or -1 if none arrived within <paramref name="timeoutMs"/>.</summary>
         public async Task<int> ReadByteAsync(int timeoutMs, CancellationToken cancellationToken)
         {
@@ -36,6 +38,10 @@ namespace Claret.Services
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
                 return -1;
+            }
+            catch (ChannelClosedException ex)
+            {
+                throw new System.IO.IOException("The serial port closed during the file transfer.", ex);
             }
         }
 

@@ -44,7 +44,7 @@
         /// <summary>Human-readable size. Shown in the tooltip and while downloading, never in the row.</summary>
         public string SizeText => FormatSize(Length);
 
-        public static string FormatSize(long bytes)
+        public static string FormatSize(long bytes, string numberFormat = "0.#")
         {
             string[] units = { "B", "KB", "MB", "GB", "TB" };
             double value = bytes;
@@ -56,7 +56,7 @@
                 unit++;
             }
 
-            return unit == 0 ? $"{bytes} B" : $"{value:0.#} {units[unit]}";
+            return unit == 0 ? $"{bytes} B" : $"{value.ToString(numberFormat)} {units[unit]}";
         }
     }
 }

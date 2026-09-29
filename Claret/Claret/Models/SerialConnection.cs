@@ -11,10 +11,16 @@ namespace Claret.Models
     {
         public const int DefaultBaudRate = 115200;
 
-        /// <summary>Baud rates offered in the panel, slowest first.</summary>
+        /// <summary>
+        /// Baud rates offered in the panel, slowest first. The list runs past 921600 because the
+        /// USB-serial parts on current boards go there — FTDI to 3M, CH340 to 2M — and a console
+        /// that only offers what a 16550 could do makes the fast ones unreachable. Whether the
+        /// adapter in hand can do the rate is its own answer, given when the port is opened.
+        /// </summary>
         public static readonly int[] CommonBaudRates =
         {
             9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600,
+            1000000, 1500000, 2000000, 3000000,
         };
 
         public string PortName { get; set; } = string.Empty;

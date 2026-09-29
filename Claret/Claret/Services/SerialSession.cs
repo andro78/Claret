@@ -30,6 +30,7 @@ namespace Claret.Services
 
         private readonly SerialConnection _settings;
         private readonly object _gate = new();
+        private readonly object _writeGate = new();
 
         private SerialPort? _port;
         private Task? _readerTask;
@@ -141,26 +142,38 @@ namespace Claret.Services
                 return;
             }
 
-            SerialPort? port;
-            lock (_gate)
+            lock (_writeGate)
             {
-                port = _port;
-            }
+                SerialPort? port;
+                lock (_gate)
+                {
+                    if (_captureChannel is not null)
+                        return; // Console input must not enter a binary transfer.
+                    port = _port;
+                }
 
-            if (port is null || !port.IsOpen)
-            {
-                return;
-            }
+                if (port is null || !port.IsOpen)
+                    return;
 
-            try
+                try
+                {
+                    port.Write(data, 0, data.Length);
+                    Interlocked.Add(ref _bytesSent, data.Length);
+                }
+                catch (Exception ex) when (ex is IOException or InvalidOperationException or TimeoutException
+                                              or UnauthorizedAccessException)
+                {
+                    RaiseClosed($"write failed: {ex.Message}");
+                }
+            }
+        }
+
+        private void SendTransfer(SerialPort port, byte[] data)
+        {
+            lock (_writeGate)
             {
                 port.Write(data, 0, data.Length);
                 Interlocked.Add(ref _bytesSent, data.Length);
-            }
-            catch (Exception ex) when (ex is IOException or InvalidOperationException or TimeoutException
-                                          or UnauthorizedAccessException)
-            {
-                RaiseClosed($"write failed: {ex.Message}");
             }
         }
 
@@ -235,9 +248,16 @@ namespace Claret.Services
             bool changedBaud = baudRate is { } requested && requested != originalBaud;
 
             var capture = new SerialByteChannel();
-            lock (_gate)
+            lock (_writeGate)
             {
-                _captureChannel = capture;
+                lock (_gate)
+                {
+                    if (_captureChannel is not null)
+                        throw new InvalidOperationException("A file transfer is already running on this port.");
+                    if (!ReferenceEquals(_port, port) || !port.IsOpen)
+                        throw new IOException("The serial port was closed.");
+                    _captureChannel = capture;
+                }
             }
 
             try
@@ -248,7 +268,7 @@ namespace Claret.Services
                 }
 
                 capture.Drain();
-                var io = new TransferIo(Send, capture.ReadByteAsync);
+                var io = new TransferIo(data => SendTransfer(port, data), capture.ReadByteAsync);
 
                 switch (protocol)
                 {
@@ -269,23 +289,30 @@ namespace Claret.Services
             }
             finally
             {
-                lock (_gate)
+                try
                 {
-                    _captureChannel = null;
+                    if (changedBaud)
+                    {
+                        try
+                        {
+                            port.BaudRate = originalBaud;
+                        }
+                        catch (Exception ex) when (ex is IOException or InvalidOperationException
+                                                      or UnauthorizedAccessException)
+                        {
+                            // The port is already in trouble if this throws; the transfer's own
+                            // exception (or success) is what matters to the caller.
+                        }
+                    }
                 }
-
-                if (changedBaud)
+                finally
                 {
-                    try
+                    lock (_gate)
                     {
-                        port.BaudRate = originalBaud;
+                        if (ReferenceEquals(_captureChannel, capture))
+                            _captureChannel = null;
                     }
-                    catch (Exception ex) when (ex is IOException or InvalidOperationException
-                                                  or UnauthorizedAccessException)
-                    {
-                        // The port is already in trouble if this throws; the transfer's own
-                        // exception (or success) is what matters to the caller.
-                    }
+                    capture.Complete();
                 }
             }
         }
@@ -353,6 +380,10 @@ namespace Claret.Services
         {
             if (Interlocked.Exchange(ref _closedRaised, 1) == 0)
             {
+                lock (_gate)
+                {
+                    _captureChannel?.Complete();
+                }
                 Closed?.Invoke(this, reason);
             }
         }

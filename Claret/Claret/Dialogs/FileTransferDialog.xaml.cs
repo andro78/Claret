@@ -51,7 +51,7 @@ namespace Claret.Dialogs
             BaudBox.SelectedIndex = 0;
 
             PrimaryButtonClick += OnPrimaryButtonClick;
-            CloseButtonClick += (_, _) => _cts?.Cancel();
+            CloseButtonClick += OnCloseButtonClick;
         }
 
         private async void OnBrowseClick(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
@@ -92,6 +92,17 @@ namespace Claret.Dialogs
                 return;
             }
 
+            long fileLength;
+            try
+            {
+                fileLength = new FileInfo(path).Length;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                ShowError($"Cannot read the file: {ex.Message}");
+                return;
+            }
+
             FileTransferProtocol protocol = ProtocolButtons.SelectedIndex switch
             {
                 1 => FileTransferProtocol.Ymodem,
@@ -112,7 +123,7 @@ namespace Claret.Dialogs
             SuccessBar.IsOpen = false;
             ProgressPanel.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
             TransferProgressBar.Value = 0;
-            ProgressText.Text = $"0 B / {RemoteEntry.FormatSize(new FileInfo(path).Length)}";
+            ProgressText.Text = $"0 B / {RemoteEntry.FormatSize(fileLength, "0.00")}";
 
             var progress = new ThrottledProgress<FileTransferProgress>(UpdateProgress);
 
@@ -144,11 +155,21 @@ namespace Claret.Dialogs
             }
         }
 
+        private void OnCloseButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
+        {
+            if (!_transferring)
+                return;
+
+            args.Cancel = true;
+            _cts?.Cancel();
+            CloseButtonText = "Cancelling…";
+        }
+
         private void UpdateProgress(FileTransferProgress p)
         {
             TransferProgressBar.Value = p.Fraction;
             ProgressText.Text =
-                $"{RemoteEntry.FormatSize(p.BytesSent)} / {RemoteEntry.FormatSize(p.TotalBytes)} ({p.Fraction:P0})";
+                $"{RemoteEntry.FormatSize(p.BytesSent, "0.00")} / {RemoteEntry.FormatSize(p.TotalBytes, "0.00")} ({p.Fraction:P2})";
         }
 
         private void SetInputsEnabled(bool enabled)

@@ -10,6 +10,18 @@ namespace Claret.Services
     /// </summary>
     internal static class AppPaths
     {
+        /// <summary>
+        /// What this app was called before, newest name first. A folder is read once, on a first
+        /// run, so a rename does not look like losing every saved connection. There are two entries
+        /// because there have been two renames, and someone may be upgrading from either one.
+        /// </summary>
+        /// <remarks>
+        /// Must stay above <see cref="DataDirectory"/>: static initializers run in source order, and
+        /// <see cref="CreateDataDirectory"/> reads this on a first run. Declared below, it is still
+        /// null then, and the app crashes on every launch until a settings file exists.
+        /// </remarks>
+        private static readonly string[] FormerNames = { "PowerTerm", "XCENA Terminal" };
+
         public static string DataDirectory { get; } = CreateDataDirectory();
 
         public static string ProfilesFile => Path.Combine(DataDirectory, "profiles.json");
@@ -25,13 +37,6 @@ namespace Claret.Services
         public static string HighlightsFile => Path.Combine(DataDirectory, "highlights.json");
 
         public static string SerialProfilesFile => Path.Combine(DataDirectory, "serial.json");
-
-        /// <summary>
-        /// What this app was called before, newest name first. A folder is read once, on a first
-        /// run, so a rename does not look like losing every saved connection. There are two entries
-        /// because there have been two renames, and someone may be upgrading from either one.
-        /// </summary>
-        private static readonly string[] FormerNames = { "PowerTerm", "XCENA Terminal" };
 
         private static string CreateDataDirectory()
         {

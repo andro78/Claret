@@ -966,9 +966,15 @@
                     if (term.hasSelection()) {
                         copySelection();
                         term.clearSelection();
-                    } else {
+                    } else if (term.modes.mouseTrackingMode === 'none') {
                         post('v');
                     }
+                    // Otherwise the program on the far end owns the mouse (vim with mouse=a,
+                    // htop, tmux): a drag there is its own selection, not ours, so there is
+                    // nothing here to copy — and pasting would type the old clipboard into it
+                    // the moment someone right-clicks to copy what they just highlighted. xterm
+                    // has already reported the click to the program; leave it at that.
+                    // Shift+drag still makes a selection of ours, which right-click copies.
 
                     return;
                 }

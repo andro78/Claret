@@ -8,15 +8,15 @@
   IgnorableNamespaces="uap rescap">
 
   <Identity
-    Name="795b8aff-4594-4059-9e72-596bb6792f38"
-    Publisher="CN=윤준호"
+    Name="63385andro78.ClaretTerminal"
+    Publisher="CN=84C05B6F-8C0B-4ABC-9597-31089995B8BB"
     Version="1.0.0.0" />
 
   <mp:PhoneIdentity PhoneProductId="795b8aff-4594-4059-9e72-596bb6792f38" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
   <Properties>
     <DisplayName>Claret Terminal</DisplayName>
-    <PublisherDisplayName>윤준호</PublisherDisplayName>
+    <PublisherDisplayName>andro78</PublisherDisplayName>
     <Logo>Images\StoreLogo.png</Logo>
   </Properties>
 

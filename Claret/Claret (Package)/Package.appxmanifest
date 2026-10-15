@@ -10,7 +10,7 @@
   <Identity
     Name="63385andro78.ClaretTerminal"
     Publisher="CN=84C05B6F-8C0B-4ABC-9597-31089995B8BB"
-    Version="1.0.0.0" />
+    Version="1.0.1.0" />
 
   <mp:PhoneIdentity PhoneProductId="795b8aff-4594-4059-9e72-596bb6792f38" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
@@ -21,7 +21,6 @@
   </Properties>
 
   <Dependencies>
-    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.22000.0" MaxVersionTested="10.0.26226.0" />
     <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.22000.0" MaxVersionTested="10.0.26226.0" />
   </Dependencies>
 

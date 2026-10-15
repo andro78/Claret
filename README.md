@@ -482,19 +482,20 @@ WinUI 3 + `runFullTrust` 데스크톱 앱은 스토어가 정식으로 받는 �
 
 ### 남은 것
 
-**1. Partner Center 계정.** **개인(Individual) 계정**으로 등록한다(일회성 약 $19, 법인 검증
-없음). 이 앱은 개인 프로젝트다 — 첫 이름이 `XCENA Terminal`이었지만 회사 산출물이 아니고,
-커밋도 전부 개인 계정(`andro78`) 명의다. 그래서 발행자는 개인이고, `LICENSE`의 저작권자와
-매니페스트의 `CN=윤준호` / `PublisherDisplayName`은 **지금 값이 이미 맞다.**
+**1. Partner Center 계정.** **개인(Individual) 계정**으로 등록한다(등록비 없음, 법인 검증
+없음 — 개인 계정은 2025-09부터, 회사 계정도 2026-05부터 무료다. 본인 확인 절차는 그대로 있다). 이 앱은 개인 프로젝트다 — 첫 이름이 `XCENA Terminal`이었지만 회사 산출물이 아니고,
+커밋도 전부 개인 계정(`andro78`) 명의다. 그래서 발행자는 개인이다. 계정은 `andro78@msn.com`으로
+등록했다.
 
-**2. Identity 3종 교체.** 이름을 예약하면 Partner Center가 값을 발급한다. **하나라도 다르면
+**2. Identity 3종 — 끝났다(2026-10-14).** `Claret Terminal`을 예약하고(Store ID
+`9NN3NM4M8S1V`) Partner Center → 제품 ID에 나온 값을 매니페스트에 넣었다. **하나라도 다르면
 업로드가 거부된다.**
 
-| `Package.appxmanifest` | 지금 | 넣을 값 |
-|---|---|---|
-| `Identity/@Name` | `795b8aff-…` (임의 GUID) | Partner Center의 패키지 ID |
-| `Identity/@Publisher` | `CN=윤준호` | 발급된 `CN=…` 문자열 그대로 |
-| `Properties/PublisherDisplayName` | `윤준호` | 발급된 표시 이름 |
+| `Package.appxmanifest` | 값 |
+|---|---|
+| `Identity/@Name` | `63385andro78.ClaretTerminal` |
+| `Identity/@Publisher` | `CN=84C05B6F-8C0B-4ABC-9597-31089995B8BB` |
+| `Properties/PublisherDisplayName` | `andro78` |
 
 `Properties/DisplayName`(`Claret Terminal`)은 **예약한 이름과 정확히 같아야** 한다.
 
@@ -515,7 +516,14 @@ msbuild "Claret\Claret (Package)\Claret (Package).wapproj" /restore `
   /p:UapAppxPackageBuildMode=StoreUpload /p:AppxPackageSigningEnabled=false
 ```
 
-산출물은 `AppPackages\` 아래에 생긴다. 올리기 전에 **WACK**(Windows App Certification Kit)을
+산출물은 `AppPackages\` 아래에 생긴다. `msbuild`는 Visual Studio(또는 Build Tools 2022의
+UWP 빌드 도구 워크로드)에 들어 있다 — `dotnet build`로는 `.wapproj`를 빌드할 수 없다.
+
+**매니페스트를 고친 뒤에는 `Claret (Package)`의 `bin`·`obj`·`AppPackages`를 지우고 빌드한다.**
+증분 빌드는 아키텍처별 `.msix`를 다시 만들지 않고 재사용해서, Identity를 바꿨는데도 옛 값이
+든 패키지가 나온 적이 있다. 올리기 전에 `.msixupload` 안의 `AppxManifest.xml`을 열어 확인한다.
+
+올리기 전에 **WACK**(Windows App Certification Kit)을
 로컬에서 한 번 돌려 시리얼 포트·WMI 사용이 걸리지 않는지 확인한다.
 
 
